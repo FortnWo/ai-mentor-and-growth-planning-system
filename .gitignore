@@ -205,3 +205,22 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Node / frontend
+node_modules/
+dist/
+.output/
+.nuxt/
+.next/
+*.local
+
+# Vite
+.vite/
+
+# Environment files (keep .env.example, ignore actual .env)
+.env
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
