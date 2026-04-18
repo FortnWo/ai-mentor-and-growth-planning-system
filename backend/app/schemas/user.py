@@ -1,16 +1,15 @@
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserBase(BaseModel):
-    username: str
+    username: str = Field(min_length=3, max_length=100)
     email: EmailStr
-    full_name: Optional[str] = None
-    major: Optional[str] = None
-    year_of_study: Optional[int] = None
-    bio: Optional[str] = None
+    full_name: str | None = Field(default=None, max_length=255)
+    major: str | None = Field(default=None, max_length=255)
+    year_of_study: int | None = Field(default=None, ge=1, le=12)
+    bio: str | None = None
 
 
 class UserCreate(UserBase):
@@ -18,10 +17,12 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    major: Optional[str] = None
-    year_of_study: Optional[int] = None
-    bio: Optional[str] = None
+    username: str | None = Field(default=None, min_length=3, max_length=100)
+    email: EmailStr | None = None
+    full_name: str | None = Field(default=None, max_length=255)
+    major: str | None = Field(default=None, max_length=255)
+    year_of_study: int | None = Field(default=None, ge=1, le=12)
+    bio: str | None = None
 
 
 class UserRead(UserBase):
@@ -29,4 +30,4 @@ class UserRead(UserBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)

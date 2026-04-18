@@ -1,18 +1,63 @@
 from datetime import datetime
-from typing import Optional
+from enum import Enum
 
-from pydantic import BaseModel
-
-
-class ChatMessageRequest(BaseModel):
-    session_id: Optional[int] = None
-    message: str
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class ChatMessageResponse(BaseModel):
-    session_id: int
-    role: str
-    content: str
+class MessageRole(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChatSessionBase(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ChatSessionCreate(ChatSessionBase):
+    user_id: int = Field(gt=0)
+
+
+class ChatSessionUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ChatSessionRead(ChatSessionBase):
+    id: int
+    user_id: int
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChatMessageBase(BaseModel):
+    role: MessageRole
+    content: str = Field(min_length=1)
+
+
+class ChatMessageCreate(ChatMessageBase):
+    session_id: int = Field(gt=0)
+
+
+class ChatMessageUpdate(BaseModel):
+    content: str | None = Field(default=None, min_length=1)
+
+
+class ChatMessageRead(ChatMessageBase):
+    id: int
+    session_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChatSendRequest(BaseModel):
+    user_id: int = Field(gt=0)
+    message: str = Field(min_length=1)
+    session_id: int | None = Field(default=None, gt=0)
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ChatSendResponse(BaseModel):
+    session: ChatSessionRead
+    user_message: ChatMessageRead
+    assistant_message: ChatMessageRead

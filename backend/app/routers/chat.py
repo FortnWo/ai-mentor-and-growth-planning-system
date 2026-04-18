@@ -1,31 +1,35 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.chat import ChatMessageRequest, ChatMessageResponse
+from app.schemas.chat import ChatMessageRead, ChatSendRequest, ChatSendResponse, ChatSessionRead
 from app.services import chat_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# Stub user_id until authentication is implemented
-_STUB_USER_ID = 1
 
+@router.post("", response_model=ChatSendResponse)
+def send_message(payload: ChatSendRequest, db: Session = Depends(get_db)):
+    try:
+        session, user_message, assistant_message = chat_service.send_message(db, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-@router.post("", response_model=ChatMessageResponse)
-def send_message(payload: ChatMessageRequest, db: Session = Depends(get_db)):
-    """Accept a user message and return a stub AI reply."""
-    session = chat_service.get_or_create_session(db, _STUB_USER_ID, payload.session_id)
-
-    chat_service.save_message(db, session.id, "user", payload.message)
-
-    reply_text = chat_service.echo_reply(payload.message)
-    reply_msg = chat_service.save_message(db, session.id, "assistant", reply_text)
-
-    return ChatMessageResponse(
-        session_id=session.id,
-        role=reply_msg.role,
-        content=reply_msg.content,
-        created_at=reply_msg.created_at,
+    return ChatSendResponse(
+        session=session,
+        user_message=user_message,
+        assistant_message=assistant_message,
     )
+
+
+@router.get("/sessions", response_model=list[ChatSessionRead])
+def list_sessions(user_id: int, db: Session = Depends(get_db)):
+    return chat_service.list_sessions_for_user(db, user_id=user_id)
+
+
+@router.get("/{session_id}/messages", response_model=list[ChatMessageRead])
+def list_messages(session_id: int, user_id: int | None = None, db: Session = Depends(get_db)):
+    try:
+        return chat_service.list_messages_for_session(db, session_id=session_id, user_id=user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,4 +1,5 @@
 from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -15,3 +16,10 @@ class User(Base):
     bio = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    sessions = relationship(
+        "ChatSession",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

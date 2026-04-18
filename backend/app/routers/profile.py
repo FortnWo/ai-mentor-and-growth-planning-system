@@ -20,16 +20,20 @@ def get_profile(user_id: int, db: Session = Depends(get_db)):
 @router.post("", response_model=UserRead, status_code=201)
 def create_profile(user_in: UserCreate, db: Session = Depends(get_db)):
     """Create a new user profile."""
-    existing = user_service.get_user_by_email(db, user_in.email)
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
-    return user_service.create_user(db, user_in)
+    try:
+        return user_service.create_user(db, user_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.patch("/{user_id}", response_model=UserRead)
 def update_profile(user_id: int, user_in: UserUpdate, db: Session = Depends(get_db)):
     """Update an existing user profile."""
-    user = user_service.get_user(db, user_id)
+    try:
+        user = user_service.update_user(db, user_id, user_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return user_service.update_user(db, user, user_in)
+    return user
