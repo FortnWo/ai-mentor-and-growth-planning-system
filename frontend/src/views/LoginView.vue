@@ -44,91 +44,99 @@ async function submit() {
 </script>
 
 <template>
-  <div class="view">
-    <div class="card">
-      <h1>Sign In</h1>
-      <p class="hint">Students use 10-digit student IDs. Admins use assigned usernames.</p>
+  <div class="page auth-page">
+    <section class="auth-shell glass-card">
+      <div class="auth-copy">
+        <p class="page-kicker">Secure access</p>
+        <h1 class="page-title">Sign in to your mentor workspace.</h1>
+        <p class="page-subtitle">
+          Students use 10-digit IDs. Admins use assigned usernames. The interface is tuned for fast re-entry.
+        </p>
 
-      <form class="form" @submit.prevent="submit">
-        <label>
-          Username
-          <input v-model="form.username" autocomplete="username" />
-        </label>
+        <div class="grid-3 auth-highlights">
+          <article class="stat-card">
+            <p class="stat-label">Fast access</p>
+            <p class="stat-value">1 click</p>
+            <p class="stat-note">Back into your workspace quickly</p>
+          </article>
 
-        <label>
-          Password
-          <input v-model="form.password" type="password" autocomplete="current-password" />
-        </label>
+          <article class="stat-card">
+            <p class="stat-label">Identity model</p>
+            <p class="stat-value">Role aware</p>
+            <p class="stat-note">Student and admin flows stay separate</p>
+          </article>
 
-        <button :disabled="submitting" type="submit">Login</button>
-      </form>
+          <article class="stat-card">
+            <p class="stat-label">Secure session</p>
+            <p class="stat-value">JWT</p>
+            <p class="stat-note">Token-based authentication</p>
+          </article>
+        </div>
+      </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
-    </div>
+      <div class="auth-panel">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Login</p>
+            <h2 class="section-title">Welcome back</h2>
+          </div>
+
+          <span class="chip chip--neutral">Protected</span>
+        </div>
+
+        <form class="auth-form" @submit.prevent="submit">
+          <label class="field">
+            <span class="label">Username</span>
+            <input v-model="form.username" class="input" autocomplete="username" />
+          </label>
+
+          <label class="field">
+            <span class="label">Password</span>
+            <input v-model="form.password" class="input" type="password" autocomplete="current-password" />
+          </label>
+
+          <button class="button button--primary" :disabled="submitting" type="submit">Login</button>
+        </form>
+
+        <p v-if="error" class="feedback feedback--error">{{ error }}</p>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: 460px;
-  margin: 5rem auto;
-  padding: 1rem;
+.auth-page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
 }
 
-.card {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 1.25rem;
-  background: #fff;
-}
-
-h1 {
-  margin: 0 0 0.6rem;
-}
-
-.hint {
-  margin: 0 0 1rem;
-  color: #64748b;
-}
-
-.form {
+.auth-shell {
   display: grid;
-  gap: 0.8rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 420px);
+  gap: 1rem;
+  padding: 1.2rem;
 }
 
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.auth-copy,
+.auth-form {
+  display: grid;
+  gap: 1rem;
 }
 
-input,
-button {
-  font: inherit;
+.auth-panel {
+  align-self: center;
 }
 
-input {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 0.55rem 0.7rem;
+.section-title {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-size: clamp(1.3rem, 2vw, 1.6rem);
 }
 
-button {
-  border: none;
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  background: #1d4ed8;
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.error {
-  margin-top: 0.85rem;
-  color: #b91c1c;
+@media (max-width: 1024px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

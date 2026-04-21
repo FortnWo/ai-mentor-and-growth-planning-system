@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { listMessages, listSessions, sendMessage } from '../api/chat'
 import type { ChatMessageRead, ChatSessionRead } from '../api/chat'
@@ -12,6 +12,12 @@ const input = ref<string>('')
 const newSessionTitle = ref<string>('')
 const loading = ref<boolean>(false)
 const error = ref<string>('')
+
+const activeSession = computed(
+  () => sessions.value.find((session) => session.id === selectedSessionId.value) ?? null,
+)
+const sessionCount = computed(() => sessions.value.length)
+const messageCount = computed(() => messages.value.length)
 
 function clearError() {
   error.value = ''
@@ -117,208 +123,198 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="view">
-    <h1>AI Mentor Chat</h1>
+  <div class="page page--wide chat-page">
+    <section class="page-header glass-card panel">
+      <div class="title-row">
+        <div>
+          <p class="page-kicker">AI mentor chat</p>
+          <h1 class="page-title">Conversational guidance, designed like a studio tool.</h1>
+          <p class="page-subtitle">
+            Keep sessions organized, review history, and send messages in a calm, high-contrast workspace.
+          </p>
+        </div>
 
-    <div class="controls card">
-      <div class="session-actions">
-        <button :disabled="loading" @click="refreshSessions">Refresh Sessions</button>
-        <button :disabled="loading" @click="startNewSession">New Chat</button>
+        <div class="hero-actions">
+          <button class="button button--primary" :disabled="loading" type="button" @click="refreshSessions">
+            Refresh Sessions
+          </button>
+          <button class="button button--ghost" :disabled="loading" type="button" @click="startNewSession">
+            New Chat
+          </button>
+        </div>
       </div>
-      <label>
-        New Session Title (optional)
-        <input v-model="newSessionTitle" placeholder="e.g. Midterm recovery plan" />
-      </label>
-    </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
+      <div class="stat-grid">
+        <article class="stat-card">
+          <p class="stat-label">Sessions</p>
+          <p class="stat-value">{{ sessionCount }}</p>
+          <p class="stat-note">Saved conversation threads</p>
+        </article>
 
-    <div class="layout">
-      <aside class="card sessions">
-        <h2>Sessions</h2>
-        <button
-          v-for="session in sessions"
-          :key="session.id"
-          :class="['session-item', { active: session.id === selectedSessionId }]"
-          @click="loadMessages(session.id)"
-        >
-          <strong>{{ session.title || `Session #${session.id}` }}</strong>
-          <small>{{ new Date(session.created_at).toLocaleString() }}</small>
-        </button>
+        <article class="stat-card">
+          <p class="stat-label">Messages</p>
+          <p class="stat-value">{{ messageCount }}</p>
+          <p class="stat-note">Visible in the current thread</p>
+        </article>
 
-        <p v-if="!sessions.length" class="hint">No sessions yet. Send your first message.</p>
+        <article class="stat-card">
+          <p class="stat-label">Active session</p>
+          <p class="stat-value">{{ activeSession?.title || `Session #${activeSession?.id ?? '-'}` }}</p>
+          <p class="stat-note">
+            {{ activeSession ? new Date(activeSession.created_at).toLocaleString() : 'Start a new conversation' }}
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <p v-if="error" class="feedback feedback--error">{{ error }}</p>
+
+    <section class="grid-2 chat-layout">
+      <aside class="panel sessions-panel">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Sessions</p>
+            <h2 class="section-title">Conversation history</h2>
+          </div>
+
+          <span class="chip chip--neutral">{{ sessionCount }} total</span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="session-title">New Session Title (optional)</label>
+          <input
+            id="session-title"
+            v-model="newSessionTitle"
+            class="input"
+            placeholder="e.g. Midterm recovery plan"
+          />
+        </div>
+
+        <div class="button-row">
+          <button class="button button--ghost" :disabled="loading" type="button" @click="refreshSessions">
+            Refresh
+          </button>
+          <button class="button button--primary" :disabled="loading" type="button" @click="startNewSession">
+            New Chat
+          </button>
+        </div>
+
+        <div class="session-list">
+          <button
+            v-for="session in sessions"
+            :key="session.id"
+            :class="['session-card', { active: session.id === selectedSessionId }]"
+            type="button"
+            @click="loadMessages(session.id)"
+          >
+            <strong>{{ session.title || `Session #${session.id}` }}</strong>
+            <small>{{ new Date(session.created_at).toLocaleString() }}</small>
+          </button>
+        </div>
+
+        <p v-if="!sessions.length" class="empty-state">No sessions yet. Send your first message.</p>
       </aside>
 
-      <section class="card chat-panel">
+      <section class="panel chat-panel">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Chat canvas</p>
+            <h2 class="section-title">{{ activeSession?.title || 'Untitled session' }}</h2>
+          </div>
+
+          <span class="chip chip--active">{{ messageCount }} messages</span>
+        </div>
+
+        <div class="divider"></div>
+
         <div class="messages">
           <div
             v-for="message in messages"
             :key="message.id"
-            :class="['message', message.role]"
+            :class="[
+              'message-bubble',
+              message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
+            ]"
           >
             <strong>{{ message.role === 'user' ? 'You' : 'AI Mentor' }}</strong>
             <p>{{ message.content }}</p>
           </div>
 
-          <p v-if="!messages.length" class="hint">Start a conversation to see messages here.</p>
+          <p v-if="!messages.length" class="empty-state">Start a conversation to see messages here.</p>
         </div>
 
-        <form class="input-row" @submit.prevent="submitMessage">
-          <input v-model="input" :disabled="loading" placeholder="Ask your AI mentor anything..." />
-          <button :disabled="loading" type="submit">Send</button>
+        <form class="message-form" @submit.prevent="submitMessage">
+          <input v-model="input" :disabled="loading" class="input" placeholder="Ask your AI mentor anything..." />
+          <button class="button button--primary" :disabled="loading" type="submit">Send</button>
         </form>
       </section>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: 980px;
-  margin: 2rem auto;
-  padding: 1rem;
-  text-align: left;
+.chat-layout {
+  align-items: start;
 }
 
-.card {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-  padding: 1rem;
-}
-
-.controls {
+.sessions-panel,
+.chat-panel {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr);
-  gap: 0.65rem;
-  align-items: end;
-  margin-bottom: 1rem;
+  gap: 1rem;
 }
 
-.session-actions {
-  display: flex;
-  gap: 0.65rem;
-}
-
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-}
-
-input,
-button {
-  font: inherit;
-}
-
-input {
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
-}
-
-button {
-  border: none;
-  border-radius: 6px;
-  padding: 0.55rem 0.95rem;
-  background: #1a56db;
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.layout {
+.session-list,
+.messages {
   display: grid;
-  grid-template-columns: 280px 1fr;
   gap: 0.75rem;
 }
 
-.sessions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.sessions h2 {
-  margin: 0 0 0.2rem;
-}
-
-.session-item {
+.session-card {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
   text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  background: #f3f4f6;
-  color: #0f172a;
+  color: inherit;
+  background: rgba(15, 23, 42, 0.48);
 }
 
-.session-item.active {
-  background: #bfdbfe;
+.session-card.active {
+  border-color: rgba(6, 182, 212, 0.28);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.session-card strong {
+  color: #f8fbff;
+}
+
+.session-card small {
+  color: var(--text-muted);
 }
 
 .chat-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 460px;
+  min-height: 640px;
 }
 
-.messages {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  flex: 1;
-  overflow-y: auto;
-  margin-bottom: 0.85rem;
+.message-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
 }
 
-.message {
-  border-radius: 8px;
-  padding: 0.65rem 0.75rem;
+.section-title {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  letter-spacing: -0.03em;
 }
 
-.message p {
-  margin: 0.25rem 0 0;
-  white-space: pre-wrap;
-}
-
-.message.user {
-  background: #dbeafe;
-}
-
-.message.assistant {
-  background: #dcfce7;
-}
-
-.input-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.input-row input {
-  flex: 1;
-}
-
-.hint {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.error {
-  color: #b91c1c;
-  margin-bottom: 0.75rem;
-}
-
-@media (max-width: 900px) {
-  .controls {
-    grid-template-columns: 1fr;
-  }
-
-  .layout {
+@media (max-width: 1024px) {
+  .message-form {
     grid-template-columns: 1fr;
   }
 }

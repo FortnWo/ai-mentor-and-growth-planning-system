@@ -69,6 +69,12 @@ const grantForm = reactive<GrantFormState>({
 })
 
 const isAdminCreate = computed(() => createForm.role === 'admin')
+const userStats = computed(() => ({
+  total: users.value.length,
+  active: users.value.filter((user) => user.is_active).length,
+  admins: users.value.filter((user) => user.role === 'admin').length,
+  students: users.value.filter((user) => user.role !== 'admin').length,
+}))
 
 function clearMessages() {
   feedback.value = ''
@@ -294,318 +300,330 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="view">
-    <h1>Admin User Management</h1>
+  <div class="page page--wide admin-page">
+    <section class="page-header glass-card panel">
+      <div class="title-row">
+        <div>
+          <p class="page-kicker">Admin console</p>
+          <h1 class="page-title">Manage users with a high-density control surface.</h1>
+          <p class="page-subtitle">
+            Create accounts, grant privileges, and audit the roster from one calm interface.
+          </p>
+        </div>
 
-    <p v-if="feedback" class="success">{{ feedback }}</p>
-    <p v-if="error" class="error">{{ error }}</p>
+        <div class="hero-actions">
+          <button class="button button--ghost" :disabled="loading" type="button" @click="refreshUsers">
+            Refresh Users
+          </button>
+        </div>
+      </div>
 
-    <section class="card create-section">
-      <h2>Create Account</h2>
-      <form class="grid" @submit.prevent="submitCreateUser">
-        <label>
-          Role
-          <select v-model="createForm.role">
-            <option value="user">Student</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
+      <div class="stat-grid">
+        <article class="stat-card">
+          <p class="stat-label">Total users</p>
+          <p class="stat-value">{{ userStats.total }}</p>
+          <p class="stat-note">Accounts currently in the system</p>
+        </article>
 
-        <label>
-          Username
-          <input v-model="createForm.username" placeholder="Student: 10-digit ID" />
-        </label>
+        <article class="stat-card">
+          <p class="stat-label">Active</p>
+          <p class="stat-value">{{ userStats.active }}</p>
+          <p class="stat-note">Enabled logins</p>
+        </article>
 
-        <label>
-          Email
-          <input v-model="createForm.email" type="email" />
-        </label>
+        <article class="stat-card">
+          <p class="stat-label">Admins</p>
+          <p class="stat-value">{{ userStats.admins }}</p>
+          <p class="stat-note">Privileged accounts</p>
+        </article>
 
-        <label>
-          Initial Password
-          <input v-model="createForm.password" type="password" />
-        </label>
+        <article class="stat-card">
+          <p class="stat-label">Students</p>
+          <p class="stat-value">{{ userStats.students }}</p>
+          <p class="stat-note">Ordinary user accounts</p>
+        </article>
+      </div>
+    </section>
 
-        <label>
-          Full Name
-          <input v-model="createForm.full_name" />
-        </label>
+    <p v-if="feedback" class="feedback feedback--success">{{ feedback }}</p>
+    <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
-        <label>
-          Major
-          <input v-model="createForm.major" />
-        </label>
+    <div class="grid-2 admin-grid">
+      <section class="panel form-panel">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Create account</p>
+            <h2 class="section-title">New user</h2>
+          </div>
 
-        <label>
-          Year Of Study
-          <input v-model="createForm.year_of_study" type="number" min="1" max="12" />
-        </label>
+          <span class="chip" :class="isAdminCreate ? 'chip--warn' : 'chip--active'">
+            {{ isAdminCreate ? 'admin flow' : 'student flow' }}
+          </span>
+        </div>
 
-        <label class="inline-label">
-          <input v-model="createForm.is_active" type="checkbox" />
-          Active
-        </label>
+        <form class="form-grid" @submit.prevent="submitCreateUser">
+          <label class="field">
+            <span class="label">Role</span>
+            <select v-model="createForm.role" class="select">
+              <option value="user">Student</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
 
-        <label class="span-all">
-          Bio
-          <textarea v-model="createForm.bio" rows="3" />
-        </label>
+          <label class="field">
+            <span class="label">Username</span>
+            <input v-model="createForm.username" class="input" placeholder="Student: 10-digit ID" />
+          </label>
 
-        <template v-if="isAdminCreate">
-          <label>
-            Admin Permission Level
-            <select v-model="createForm.admin_permission_level">
+          <label class="field">
+            <span class="label">Email</span>
+            <input v-model="createForm.email" class="input" type="email" />
+          </label>
+
+          <label class="field">
+            <span class="label">Initial Password</span>
+            <input v-model="createForm.password" class="input" type="password" />
+          </label>
+
+          <label class="field">
+            <span class="label">Full Name</span>
+            <input v-model="createForm.full_name" class="input" />
+          </label>
+
+          <label class="field">
+            <span class="label">Major</span>
+            <input v-model="createForm.major" class="input" />
+          </label>
+
+          <label class="field">
+            <span class="label">Year Of Study</span>
+            <input v-model="createForm.year_of_study" class="input" type="number" min="1" max="12" />
+          </label>
+
+          <label class="field field--inline">
+            <input v-model="createForm.is_active" type="checkbox" />
+            <span class="label">Active</span>
+          </label>
+
+          <label class="field span-all">
+            <span class="label">Bio</span>
+            <textarea v-model="createForm.bio" class="textarea" rows="3"></textarea>
+          </label>
+
+          <template v-if="isAdminCreate">
+            <label class="field">
+              <span class="label">Admin Permission Level</span>
+              <select v-model="createForm.admin_permission_level" class="select">
+                <option value="full">Full</option>
+                <option value="limited">Limited</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="label">Admin Permission Keys</span>
+              <input v-model="createForm.admin_permissions" class="input" placeholder="user.read,user.update" />
+            </label>
+
+            <label class="field span-all">
+              <span class="label">Admin Expires At</span>
+              <input v-model="createForm.admin_expires_at" class="input" type="datetime-local" />
+            </label>
+          </template>
+
+          <div class="actions span-all">
+            <button class="button button--primary" :disabled="creating" type="submit">Create User</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel form-panel">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Privilege control</p>
+            <h2 class="section-title">Grant / update admin access</h2>
+          </div>
+        </div>
+
+        <form class="form-grid" @submit.prevent="applyGrantForm">
+          <label class="field">
+            <span class="label">Target User ID</span>
+            <input v-model="grantForm.target_user_id" class="input" type="number" min="1" />
+          </label>
+
+          <label class="field">
+            <span class="label">Permission Level</span>
+            <select v-model="grantForm.permission_level" class="select">
               <option value="full">Full</option>
               <option value="limited">Limited</option>
             </select>
           </label>
 
-          <label>
-            Admin Permission Keys (comma separated)
-            <input v-model="createForm.admin_permissions" placeholder="user.read,user.update" />
+          <label class="field">
+            <span class="label">Permission Keys</span>
+            <input v-model="grantForm.permissions" class="input" placeholder="user.read,user.update" />
           </label>
 
-          <label>
-            Admin Expires At
-            <input v-model="createForm.admin_expires_at" type="datetime-local" />
+          <label class="field">
+            <span class="label">Expires At</span>
+            <input v-model="grantForm.expires_at" class="input" type="datetime-local" />
           </label>
-        </template>
 
-        <div class="actions span-all">
-          <button :disabled="creating" type="submit">Create User</button>
+          <div class="actions span-all">
+            <button class="button button--primary" :disabled="loading" type="submit">Apply Privileges</button>
+            <button class="button button--ghost" :disabled="loading" type="button" @click="refreshUsers">
+              Refresh Users
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <section class="panel table-panel">
+      <div class="title-row">
+        <div>
+          <p class="eyebrow">User list</p>
+          <h2 class="section-title">Audit and manage the roster</h2>
         </div>
-      </form>
-    </section>
 
-    <section class="card grant-section">
-      <h2>Grant / Update Admin Privileges</h2>
-      <form class="grant-grid" @submit.prevent="applyGrantForm">
-        <label>
-          Target User ID
-          <input v-model="grantForm.target_user_id" type="number" min="1" />
-        </label>
+        <span class="chip chip--neutral">{{ users.length }} records</span>
+      </div>
 
-        <label>
-          Permission Level
-          <select v-model="grantForm.permission_level">
-            <option value="full">Full</option>
-            <option value="limited">Limited</option>
-          </select>
-        </label>
+      <div class="table-shell">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Admin Scope</th>
+                <th>Admin Expiry</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in users" :key="user.id">
+                <td>{{ user.id }}</td>
+                <td>{{ user.username }}</td>
+                <td>
+                  <span class="chip" :class="user.role === 'admin' ? 'chip--warn' : 'chip--neutral'">
+                    {{ user.role }}
+                  </span>
+                </td>
+                <td>
+                  <span class="chip" :class="user.is_active ? 'chip--active' : 'chip--warn'">
+                    {{ user.is_active ? 'active' : 'disabled' }}
+                  </span>
+                </td>
+                <td>
+                  <span v-if="user.role !== 'admin'">-</span>
+                  <span v-else>
+                    {{ user.admin_permission_level || 'full' }}
+                    <template v-if="user.admin_permissions.length">
+                      ({{ user.admin_permissions.join(', ') }})
+                    </template>
+                  </span>
+                </td>
+                <td>
+                  {{ user.admin_expires_at ? new Date(user.admin_expires_at).toLocaleString() : '-' }}
+                </td>
+                <td>
+                  <div class="actions table-actions">
+                    <button
+                      class="button button--ghost"
+                      :disabled="actionLoadingId === user.id"
+                      type="button"
+                      @click="toggleActive(user)"
+                    >
+                      {{ user.is_active ? 'Disable' : 'Enable' }}
+                    </button>
 
-        <label>
-          Permission Keys
-          <input v-model="grantForm.permissions" placeholder="user.read,user.update" />
-        </label>
+                    <button
+                      v-if="user.role !== 'admin'"
+                      class="button button--ghost"
+                      :disabled="actionLoadingId === user.id"
+                      type="button"
+                      @click="quickGrantAdmin(user)"
+                    >
+                      Quick Grant Admin
+                    </button>
 
-        <label>
-          Expires At
-          <input v-model="grantForm.expires_at" type="datetime-local" />
-        </label>
+                    <button
+                      v-else
+                      class="button button--ghost"
+                      :disabled="actionLoadingId === user.id || user.id === authState.user?.id"
+                      type="button"
+                      @click="revokeAdmin(user)"
+                    >
+                      Revoke Admin
+                    </button>
 
-        <div class="actions">
-          <button :disabled="loading" type="submit">Apply Privileges</button>
-          <button :disabled="loading" type="button" @click="refreshUsers">Refresh Users</button>
+                    <button
+                      class="button button--danger"
+                      :disabled="actionLoadingId === user.id || user.id === authState.user?.id"
+                      type="button"
+                      @click="removeUser(user)"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </form>
-    </section>
-
-    <section class="card">
-      <h2>User List</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Admin Scope</th>
-              <th>Admin Expiry</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in users" :key="user.id">
-              <td>{{ user.id }}</td>
-              <td>{{ user.username }}</td>
-              <td>{{ user.role }}</td>
-              <td>{{ user.is_active ? 'active' : 'disabled' }}</td>
-              <td>
-                <span v-if="user.role !== 'admin'">-</span>
-                <span v-else>
-                  {{ user.admin_permission_level || 'full' }}
-                  <template v-if="user.admin_permissions.length">
-                    ({{ user.admin_permissions.join(', ') }})
-                  </template>
-                </span>
-              </td>
-              <td>
-                {{ user.admin_expires_at ? new Date(user.admin_expires_at).toLocaleString() : '-' }}
-              </td>
-              <td class="actions">
-                <button
-                  :disabled="actionLoadingId === user.id"
-                  type="button"
-                  @click="toggleActive(user)"
-                >
-                  {{ user.is_active ? 'Disable' : 'Enable' }}
-                </button>
-
-                <button
-                  v-if="user.role !== 'admin'"
-                  :disabled="actionLoadingId === user.id"
-                  type="button"
-                  @click="quickGrantAdmin(user)"
-                >
-                  Quick Grant Admin
-                </button>
-
-                <button
-                  v-else
-                  :disabled="actionLoadingId === user.id || user.id === authState.user?.id"
-                  type="button"
-                  @click="revokeAdmin(user)"
-                >
-                  Revoke Admin
-                </button>
-
-                <button
-                  :disabled="actionLoadingId === user.id || user.id === authState.user?.id"
-                  class="danger"
-                  type="button"
-                  @click="removeUser(user)"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </section>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: 1200px;
-  margin: 2rem auto;
-  padding: 1rem;
-  text-align: left;
+.admin-page {
+  width: min(1360px, 100%);
+  margin: 0 auto;
 }
 
-.card {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-  padding: 1rem;
-  margin-bottom: 1rem;
+.admin-grid {
+  align-items: start;
 }
 
-h2 {
-  margin: 0 0 0.8rem;
-}
-
-.grid {
+.form-panel,
+.table-panel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.grant-grid {
+.form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
 }
 
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.table-actions {
+  min-width: 300px;
 }
 
-.inline-label {
-  align-self: center;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-input,
-textarea,
-select,
-button {
-  font: inherit;
-}
-
-input,
-textarea,
-select {
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-button {
-  border: none;
-  border-radius: 6px;
-  padding: 0.45rem 0.8rem;
-  background: #1d4ed8;
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-button.danger {
-  background: #b91c1c;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 900px;
-}
-
-th,
-td {
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.6rem;
-  text-align: left;
-  vertical-align: top;
-}
-
-.success {
-  color: #166534;
-}
-
-.error {
-  color: #b91c1c;
+.section-title {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
 }
 
 .span-all {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 1000px) {
-  .grid,
-  .grant-grid {
+@media (max-width: 1100px) {
+  .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .table-actions {
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

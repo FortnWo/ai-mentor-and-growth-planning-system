@@ -127,152 +127,191 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="view">
-    <h1>My Profile</h1>
+  <div class="page page--wide profile-page">
+    <section class="page-header glass-card panel">
+      <div class="title-row">
+        <div>
+          <p class="page-kicker">Personal workspace</p>
+          <h1 class="page-title">My Profile</h1>
+          <p class="page-subtitle">
+            Keep your academic details, bio, and credentials organized in a polished profile workspace.
+          </p>
+        </div>
+      </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="feedback" class="success">{{ feedback }}</p>
+      <div v-if="profile" class="stat-grid">
+        <article class="stat-card">
+          <p class="stat-label">Username</p>
+          <p class="stat-value">{{ profile.username }}</p>
+          <p class="stat-note">Primary login identifier</p>
+        </article>
 
-    <div v-if="profile" class="card basic">
-      <p><strong>Username:</strong> {{ profile.username }}</p>
-      <p><strong>Email:</strong> {{ profile.email }}</p>
-      <p><strong>Role:</strong> {{ profile.role }}</p>
-      <p><strong>Status:</strong> {{ profile.is_active ? 'Active' : 'Disabled' }}</p>
-      <p v-if="profile.last_login_at"><strong>Last Login:</strong> {{ new Date(profile.last_login_at).toLocaleString() }}</p>
+        <article class="stat-card">
+          <p class="stat-label">Role</p>
+          <p class="stat-value">{{ profile.role }}</p>
+          <p class="stat-note">{{ profile.is_active ? 'Active account' : 'Disabled account' }}</p>
+        </article>
+
+        <article class="stat-card">
+          <p class="stat-label">Email</p>
+          <p class="stat-value">{{ profile.email }}</p>
+          <p class="stat-note">Notification channel</p>
+        </article>
+
+        <article class="stat-card">
+          <p class="stat-label">Last login</p>
+          <p class="stat-value">{{ profile.last_login_at ? 'Recent' : 'Never' }}</p>
+          <p class="stat-note">
+            {{ profile.last_login_at ? new Date(profile.last_login_at).toLocaleString() : 'No login record yet' }}
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <p v-if="error" class="feedback feedback--error">{{ error }}</p>
+    <p v-if="feedback" class="feedback feedback--success">{{ feedback }}</p>
+
+    <div class="grid-2 profile-grid">
+      <section v-if="profile" class="panel profile-summary">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Account summary</p>
+            <h2 class="section-title">Identity snapshot</h2>
+          </div>
+
+          <span class="chip" :class="profile.is_active ? 'chip--active' : 'chip--warn'">
+            {{ profile.is_active ? 'Active' : 'Disabled' }}
+          </span>
+        </div>
+
+        <div class="summary-list">
+          <p><strong>Username</strong><span>{{ profile.username }}</span></p>
+          <p><strong>Email</strong><span>{{ profile.email }}</span></p>
+          <p><strong>Role</strong><span>{{ profile.role }}</span></p>
+          <p v-if="profile.last_login_at">
+            <strong>Last Login</strong><span>{{ new Date(profile.last_login_at).toLocaleString() }}</span>
+          </p>
+        </div>
+      </section>
+
+      <form class="panel form-card" @submit.prevent="saveProfile">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Profile details</p>
+            <h2 class="section-title">Edit your public profile</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="label">Full Name</span>
+          <input v-model="profileForm.full_name" class="input" />
+        </label>
+
+        <label class="field">
+          <span class="label">Major</span>
+          <input v-model="profileForm.major" class="input" />
+        </label>
+
+        <label class="field">
+          <span class="label">Year Of Study</span>
+          <input v-model="profileForm.year_of_study" class="input" type="number" min="1" max="12" />
+        </label>
+
+        <label class="field span-2">
+          <span class="label">Bio</span>
+          <textarea v-model="profileForm.bio" class="textarea" rows="4"></textarea>
+        </label>
+
+        <div class="actions span-2">
+          <button class="button button--primary" :disabled="submitting" type="submit">Save Profile</button>
+        </div>
+      </form>
+
+      <form class="panel form-card" @submit.prevent="updatePassword">
+        <div class="title-row">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h2 class="section-title">Change password</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="label">Current Password</span>
+          <input v-model="passwordForm.current_password" class="input" type="password" />
+        </label>
+
+        <label class="field">
+          <span class="label">New Password</span>
+          <input v-model="passwordForm.new_password" class="input" type="password" />
+        </label>
+
+        <div class="actions span-2">
+          <button class="button button--ghost" :disabled="submitting" type="submit">Update Password</button>
+        </div>
+      </form>
     </div>
-
-    <form class="card form" @submit.prevent="saveProfile">
-      <h2>Profile Details</h2>
-
-      <label>
-        Full Name
-        <input v-model="profileForm.full_name" />
-      </label>
-
-      <label>
-        Major
-        <input v-model="profileForm.major" />
-      </label>
-
-      <label>
-        Year Of Study
-        <input v-model="profileForm.year_of_study" type="number" min="1" max="12" />
-      </label>
-
-      <label class="span-2">
-        Bio
-        <textarea v-model="profileForm.bio" rows="4" />
-      </label>
-
-      <div class="actions span-2">
-        <button :disabled="submitting" type="submit">Save Profile</button>
-      </div>
-    </form>
-
-    <form class="card form" @submit.prevent="updatePassword">
-      <h2>Change Password</h2>
-
-      <label>
-        Current Password
-        <input v-model="passwordForm.current_password" type="password" />
-      </label>
-
-      <label>
-        New Password
-        <input v-model="passwordForm.new_password" type="password" />
-      </label>
-
-      <div class="actions span-2">
-        <button :disabled="submitting" type="submit">Update Password</button>
-      </div>
-    </form>
   </div>
 </template>
 
 <style scoped>
-.view {
-  max-width: 820px;
-  margin: 2rem auto;
-  padding: 1rem;
-  text-align: left;
+.profile-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
 }
 
-.card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  background: #fff;
-}
-
-.basic p {
-  margin: 0.3rem 0;
-}
-
-.form {
+.profile-summary,
+.form-card {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-h2 {
-  grid-column: 1 / -1;
-  margin: 0;
+.summary-list {
+  display: grid;
+  gap: 0.8rem;
 }
 
-label {
+.summary-list p {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.9rem;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 
-input,
-textarea,
-button {
-  font: inherit;
+.summary-list strong {
+  color: #d8e7f7;
 }
 
-input,
-textarea {
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 0.5rem 0.65rem;
+.summary-list span {
+  text-align: right;
+  color: #f8fbff;
+}
+
+.form-card {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+}
+
+.section-title {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--heading);
+  font-size: clamp(1.2rem, 2vw, 1.55rem);
 }
 
 .actions {
   display: flex;
-  gap: 0.5rem;
-}
-
-button {
-  border: none;
-  border-radius: 6px;
-  padding: 0.55rem 0.95rem;
-  background: #1a56db;
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.success {
-  color: #166534;
-}
-
-.error {
-  color: #b91c1c;
+  gap: 0.75rem;
 }
 
 .span-2 {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 900px) {
-  .form {
+@media (max-width: 1024px) {
+  .form-card {
     grid-template-columns: 1fr;
   }
 }
