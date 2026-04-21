@@ -1,39 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.core.security import get_current_user
+from app.schemas.user import PasswordUpdate, ProfileUpdate, UserRead
 from app.services import user_service
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-@router.get("/{user_id}", response_model=UserRead)
-def get_profile(user_id: int, db: Session = Depends(get_db)):
-    """Retrieve a user profile by ID."""
-    user = user_service.get_user(db, user_id)
+@router.get("/me", response_model=UserRead)
+def get_my_profile(current_user=Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me", response_model=UserRead)
+def update_my_profile(
+    profile_in: ProfileUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = user_service.update_profile(db, current_user.id, profile_in)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 
-@router.post("", response_model=UserRead, status_code=201)
-def create_profile(user_in: UserCreate, db: Session = Depends(get_db)):
-    """Create a new user profile."""
+@router.patch("/me/password", response_model=UserRead)
+def change_my_password(
+    password_in: PasswordUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
-        return user_service.create_user(db, user_in)
+        user = user_service.change_password(db, current_user.id, password_in)
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.patch("/{user_id}", response_model=UserRead)
-def update_profile(user_id: int, user_in: UserUpdate, db: Session = Depends(get_db)):
-    """Update an existing user profile."""
-    try:
-        user = user_service.update_user(db, user_id, user_in)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user

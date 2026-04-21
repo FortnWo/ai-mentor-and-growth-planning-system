@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI智能导师 - 你的专属智能学习助手</title>
+  <!-- Tailwind CSS + 图标库 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- Tailwind 主题配置（AI科技配色） -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#06B6D4',    // AI主色：青蓝
+            secondary: '#7E22CE',  // 辅助色：科技紫
+            accent: '#2563EB',     // 点缀色：智能蓝
+            dark: '#0F172A',       // 深色底
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      /* 渐变文字 */
+      .text-gradient {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+      }
+      /* AI动态渐变背景 */
+      .bg-animate {
+        background: linear-gradient(45deg, #0F172A, #1E293B, #3B0764, #0F172A);
+        background-size: 300% 300%;
+        animation: gradient 15s ease infinite;
+      }
+      /* 卡片悬浮动效 */
+      .card-hover {
+        @apply transition-all duration-500 hover:scale-105 hover:-rotate-1 hover:shadow-2xl hover:shadow-primary/30;
+      }
+      /* 滚动渐入动画 */
+      .fade-in {
+        opacity: 0;
+        transform: translateY(40px);
+        transition: opacity 0.8s ease, transform 0.8s ease;
+      }
+      .fade-in.active {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      /* 鼠标跟随AI光晕 */
+      .shine {
+        position: absolute;
+        width: 450px;
+        height: 450px;
+        background: radial-gradient(circle, rgba(6,182,212,0.18) 0%, transparent 60%);
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        transition: 0.1s ease;
+        z-index: 1;
+      }
+      /* 打字机效果 */
+      .typing {
+        overflow: hidden;
+        border-right: 3px solid #06B6D4;
+        white-space: nowrap;
+        animation: typing 3.5s steps(40, end), blink 0.75s step-end infinite;
+      }
+    }
+
+    /* 动画关键帧 */
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes typing {
+      from { width: 0 }
+      to { width: 100% }
+    }
+    @keyframes blink {
+      50% { border-color: transparent }
+    }
+  </style>
+</head>
+
+<body class="bg-dark text-white overflow-x-hidden">
+  <!-- 鼠标AI光晕跟随 -->
+  <div class="shine" id="shine"></div>
+
+  <!-- 导航栏（滚动毛玻璃效果） -->
+  <nav id="navbar" class="fixed w-full top-0 z-50 transition-all duration-500 py-4 px-4 md:px-0">
+    <div class="container mx-auto px-6 flex justify-between items-center">
+      <a href="#" class="text-2xl font-bold text-gradient">
+        <i class="fa fa-robot mr-2"></i>AI导师
+      </a>
+      
+      <!-- 桌面端菜单 -->
+      <div class="hidden md:flex gap-8 items-center">
+        <a href="#home" class="hover:text-primary transition-colors">首页</a>
+        <a href="#chat" class="hover:text-primary transition-colors">AI聊天</a>
+        <a href="#profile" class="hover:text-primary transition-colors">用户画像</a>
+        <a href="#login" class="hover:text-primary transition-colors">登录/注册</a>
+        <button class="bg-gradient-to-r from-primary to-accent px-5 py-2 rounded-full hover:shadow-lg hover:shadow-primary/30 transition-all">
+          开始对话
+        </button>
+      </div>
+      
+      <!-- 移动端菜单按钮 -->
+      <button class="md:hidden text-2xl" id="menuBtn">
+        <i class="fa fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- 移动端侧边菜单 -->
+  <div id="mobileMenu" class="fixed top-0 right-0 w-0 h-full bg-dark/95 backdrop-blur-lg z-50 transition-all duration-500 overflow-hidden">
+    <div class="p-8 flex flex-col gap-6 text-xl">
+      <button class="text-2xl self-end mb-6" id="closeMenu">
+        <i class="fa fa-times"></i>
+      </button>
+      <a href="#home" class="hover:text-primary">首页</a>
+      <a href="#chat" class="hover:text-primary">AI聊天</a>
+      <a href="#profile" class="hover:text-primary">用户画像</a>
+      <a href="#login" class="hover:text-primary">登录/注册</a>
+      <button class="bg-gradient-to-r from-primary to-accent px-5 py-2 rounded-full mt-4">
+        开始对话
+      </button>
+    </div>
+  </div>
+
+  <!-- 英雄区（AI导师主视觉） -->
+  <section id="home" class="min-h-screen flex items-center justify-center relative px-6 bg-animate">
+    <div class="container mx-auto text-center z-10">
+      <h1 class="text-[clamp(2.5rem,8vw,5rem)] font-bold mb-4 typing">
+        AI智能导师 · 专属学习陪伴
+      </h1>
+      <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto">
+        智能AI聊天 | 个性化用户画像 | 安全登录注册 | 全天候智能解答
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <button class="bg-gradient-to-r from-primary to-accent px-8 py-3 rounded-full text-lg hover:shadow-xl hover:shadow-primary/20 transition-all">
+          <i class="fa fa-comments mr-2"></i>立即聊天
+        </button>
+        <button class="border-2 border-primary px-8 py-3 rounded-full text-lg hover:bg-primary/10 transition-all">
+          <i class="fa fa-user mr-2"></i>登录/注册
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 核心功能区 -->
+  <section id="features" class="py-20 px-6">
+    <div class="container mx-auto">
+      <h2 class="text-4xl md:text-5xl font-bold text-center mb-16 text-gradient">核心功能</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- AI聊天功能 -->
+        <div id="chat" class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-primary mb-4"><i class="fa fa-comments"></i></div>
+          <h3 class="text-2xl font-bold mb-3">AI智能聊天</h3>
+          <p class="text-gray-400">7×24小时智能对话，专业解答学习、工作、生活各类问题</p>
+        </div>
+        <!-- 用户画像功能 -->
+        <div id="profile" class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-secondary mb-4"><i class="fa fa-id-card"></i></div>
+          <h3 class="text-2xl font-bold mb-3">智能用户画像</h3>
+          <p class="text-gray-400">自动生成个人学习画像，个性化推荐内容，精准智能服务</p>
+        </div>
+        <!-- 登录注册功能 -->
+        <div id="login" class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-accent mb-4"><i class="fa fa-user-lock"></i></div>
+          <h3 class="text-2xl font-bold mb-3">账号安全体系</h3>
+          <p class="text-gray-400">一键登录/注册，数据加密存储，保障个人信息绝对安全</p>
+        </div>
+        <!-- 扩展功能1 -->
+        <div class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-primary mb-4"><i class="fa fa-history"></i></div>
+          <h3 class="text-2xl font-bold mb-3">对话记录同步</h3>
+          <p class="text-gray-400">云端自动同步聊天记录，多设备无缝切换，随时查看</p>
+        </div>
+        <!-- 扩展功能2 -->
+        <div class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-secondary mb-4"><i class="fa fa-line-chart"></i></div>
+          <h3 class="text-2xl font-bold mb-3">学习数据分析</h3>
+          <p class="text-gray-400">基于用户画像生成学习报告，智能优化学习路径</p>
+        </div>
+        <!-- 扩展功能3 -->
+        <div class="bg-gray-800/50 backdrop-blur p-8 rounded-2xl card-hover fade-in">
+          <div class="text-4xl text-accent mb-4"><i class="fa fa-shield"></i></div>
+          <h3 class="text-2xl font-bold mb-3">隐私安全保护</h3>
+          <p class="text-gray-400">严格隐私保护政策，用户数据自主掌控，安全可靠</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 关于AI导师 -->
+  <section id="about" class="py-20 bg-dark/80 px-6">
+    <div class="container mx-auto fade-in text-center">
+      <h2 class="text-4xl md:text-5xl font-bold mb-8 text-gradient">关于AI智能导师</h2>
+      <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+        基于前沿大语言模型打造的智能AI导师，支持实时智能对话、用户个性化画像构建、
+        安全账号登录注册体系，为你提供全天候、高效率、个性化的智能服务体验。
+      </p>
+    </div>
+  </section>
+
+  <!-- 底部 -->
+  <footer class="py-10 bg-gray-900 text-center text-gray-400">
+    <p>© 2026 AI智能导师 | 智能聊天 · 用户画像 · 安全登录 | 所有功能由AI技术驱动</p>
+  </footer>
+
+  <!-- JS 动画逻辑 -->
+  <script>
+    // 鼠标光晕跟随
+    const shine = document.getElementById('shine');
+    document.addEventListener('mousemove', (e) => {
+      shine.style.left = e.clientX + 'px';
+      shine.style.top = e.clientY + 'px';
+    });
+
+    // 导航栏滚动效果
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 50) {
+        navbar.classList.add('bg-dark/90', 'backdrop-blur-lg', 'shadow-lg');
+      } else {
+        navbar.classList.remove('bg-dark/90', 'backdrop-blur-lg', 'shadow-lg');
+      }
+    });
+
+    // 滚动渐入动画
+    const fadeElements = document.querySelectorAll('.fade-in');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('active');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    fadeElements.forEach(el => observer.observe(el));
+
+    // 移动端菜单
+    const menuBtn = document.getElementById('menuBtn');
+    const closeMenu = document.getElementById('closeMenu');
+    const mobileMenu = document.getElementById('mobileMenu');
+
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.style.width = '280px';
+    });
+    closeMenu.addEventListener('click', () => {
+      mobileMenu.style.width = '0';
+    });
+  </script>
+</body>
+</html>

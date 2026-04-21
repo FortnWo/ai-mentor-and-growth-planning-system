@@ -1,62 +1,88 @@
-def make_user_payload(index: int = 1):
-    return {
-        "username": f"profile_user_{index}",
-        "email": f"profile_user_{index}@example.com",
-        "full_name": f"Profile User {index}",
-        "major": "Computer Science",
-        "year_of_study": 3,
-        "bio": "Profile integration test user",
-    }
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "Admin@12345"
 
 
-def test_create_profile(client):
-    payload = make_user_payload(1)
-    response = client.post("/profile", json=payload)
-    assert response.status_code == 201
-    data = response.json()
-    assert data["username"] == payload["username"]
-    assert data["email"] == payload["email"]
-
-
-def test_get_profile(client):
-    payload = make_user_payload(2)
-    create_resp = client.post("/profile", json=payload)
-    assert create_resp.status_code == 201
-    user_id = create_resp.json()["id"]
-
-    response = client.get(f"/profile/{user_id}")
+def login_admin(client):
+    response = client.post(
+        "/auth/login",
+        json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+    )
     assert response.status_code == 200
-    data = response.json()
-    assert data["id"] == user_id
-    assert data["email"] == payload["email"]
+    return response.json()["access_token"]
 
 
-def test_update_profile(client):
-    payload = make_user_payload(3)
-    create_resp = client.post("/profile", json=payload)
-    assert create_resp.status_code == 201
-    user_id = create_resp.json()["id"]
-
-    update_payload = {"bio": "Updated in MySQL test", "year_of_study": 4}
-    update_resp = client.patch(f"/profile/{user_id}", json=update_payload)
-    assert update_resp.status_code == 200
-    updated_data = update_resp.json()
-    assert updated_data["bio"] == update_payload["bio"]
-    assert updated_data["year_of_study"] == update_payload["year_of_study"]
+def admin_headers(client):
+    return {"Authorization": f"Bearer {login_admin(client)}"}
 
 
-def test_create_profile_duplicate_email(client):
-    payload = make_user_payload(4)
-    response1 = client.post("/profile", json=payload)
-    assert response1.status_code == 201
+def create_student_user(client, index: int = 1):
+    response = client.post(
+        "/admin/users",
+        json={
+            "username": f"20220254{index:02d}",
+            "email": f"profile_{index}@example.com",
+            "password": "Student@12345",
+            "full_name": f"Profile Student {index}",
+            "major": "Engineering",
+            "year_of_study": 1,
+            "bio": "Profile testing student",
+            "role": "user",
+        },
+        headers=admin_headers(client),
+    )
+    assert response.status_code == 201
+    return response.json()
 
-    duplicate_payload = make_user_payload(5)
-    duplicate_payload["email"] = payload["email"]
-    response2 = client.post("/profile", json=duplicate_payload)
-    assert response2.status_code == 409
+
+def login_student(client, username: str, password: str):
+    response = client.post(
+        "/auth/login",
+        json={"username": username, "password": password},
+    )
+    assert response.status_code == 200
+    return response.json()["access_token"]
 
 
-def test_get_profile_not_found(client):
-    response = client.get("/profile/99999999")
-    assert response.status_code == 404
+def test_profile_me_requires_auth(client):
+    response = client.get("/profile/me")
+    assert response.status_code == 401
 
+
+def test_profile_me_read_update_and_password_change(client):
+    student = create_student_user(client, 1)
+    token = login_student(client, student["username"], "Student@12345")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    profile_response = client.get("/profile/me", headers=headers)
+    assert profile_response.status_code == 200
+    assert profile_response.json()["username"] == student["username"]
+
+    update_response = client.put(
+        "/profile/me",
+        json={
+            "full_name": "Updated Profile Student",
+            "major": "AI Engineering",
+            "year_of_study": 2,
+            "bio": "Updated bio",
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["full_name"] == "Updated Profile Student"
+    assert update_response.json()["major"] == "AI Engineering"
+
+    password_response = client.patch(
+        "/profile/me/password",
+        json={
+            "current_password": "Student@12345",
+            "new_password": "Student@54321",
+        },
+        headers=headers,
+    )
+    assert password_response.status_code == 200
+
+    relogin_response = client.post(
+        "/auth/login",
+        json={"username": student["username"], "password": "Student@54321"},
+    )
+    assert relogin_response.status_code == 200

@@ -1,17 +1,27 @@
 # AI Mentor & Growth Planning System
 
-A full-stack platform that helps university students set goals, receive AI-powered mentoring advice, and track their personal growth.
+A full-stack mentoring platform for university students and admins, with role-based access control, temporary delegated admin permissions, and AI chat support through OpenAI-compatible providers.
 
 ## Stack
 
-| Layer    | Technology                    |
-|----------|-------------------------------|
-| Frontend | Vue 3 · Vite · TypeScript     |
-| Backend  | FastAPI (Python 3.11+)        |
-| Database | MySQL 8 · SQLAlchemy 2        |
-| API      | RESTful JSON                  |
+| Layer | Technology |
+| --- | --- |
+| Frontend | Vue 3, Vue Router, TypeScript, Vite |
+| Backend | FastAPI, SQLAlchemy 2, Pydantic v2 |
+| Database | MySQL 8 (or compatible) |
+| AI Provider | OpenAI-compatible API (configured via environment variables) |
 
----
+## Core Features
+
+- JWT login and authenticated session restoration on frontend.
+- Admin-managed user lifecycle (create/list/update/delete).
+- Student account constraint: username must be a 10-digit student ID.
+- Role model: `user` and `admin`.
+- Delegated admin access with:
+	- full admin scope, or
+	- limited permission keys and optional expiry.
+- Profile self-service APIs for current user (`/profile/me`).
+- AI chat sessions and message history.
 
 ## Quick Start
 
@@ -19,123 +29,145 @@ A full-stack platform that helps university students set goals, receive AI-power
 
 - Python 3.11+
 - Node.js 20+
-- MySQL 8 (or a compatible server)
+- MySQL 8+
 
----
-
-### 1. Database
+### 1. Initialize Database
 
 ```bash
 mysql -u root -p < database/schema.sql
 ```
 
----
-
-### 2. Backend
+### 2. Start Backend
 
 ```bash
 cd backend
 
-# Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+# Windows PowerShell
+# .venv\Scripts\Activate.ps1
 
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env — set DATABASE_URL and other values
 
-# Run the development server
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs are available at http://localhost:8000/docs once the server is running.
+Swagger UI: http://localhost:8000/docs
 
-#### Run backend tests
+Run backend tests:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest -q
 ```
 
----
-
-### 3. Frontend
+### 3. Start Frontend
 
 ```bash
 cd frontend
 
-# Install dependencies
 npm install
-
-# Configure environment
 cp .env.example .env
-# Edit .env — set VITE_API_BASE_URL if your backend is on a different host/port
 
-# Run the development server
 npm run dev
 ```
 
-The app is available at http://localhost:5173.
+Frontend app: http://localhost:5173
 
-#### Build for production
+Production build:
 
 ```bash
 npm run build
 ```
 
----
+## Environment Variables
+
+Important backend variables in `backend/.env`:
+
+- `DATABASE_URL`: SQLAlchemy DSN.
+- `ALLOWED_ORIGINS`: JSON array for CORS, e.g. `["http://localhost:5173"]`.
+- `AUTH_SECRET_KEY`: JWT signing key (must be changed in production).
+- `AUTH_ACCESS_TOKEN_EXPIRES_MINUTES`: token expiry in minutes.
+- `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL`, `LLM_SYSTEM_PROMPT`: AI provider settings.
+- `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_FULL_NAME`:
+	optional startup bootstrap admin. When set, backend creates this admin if it does not already exist.
+
+Frontend variable:
+
+- `VITE_API_BASE_URL`: backend base URL, default `http://localhost:8000`.
+
+## API Overview
+
+### Public
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/ping` | Health check |
+| POST | `/auth/login` | Login and receive JWT |
+
+### Authenticated
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/auth/me` | Get current user |
+| GET | `/profile/me` | Get my profile |
+| PUT | `/profile/me` | Update my profile |
+| PATCH | `/profile/me/password` | Change my password |
+| POST | `/chat` | Send message and get AI response |
+| GET | `/chat/sessions?user_id=<id>` | List chat sessions for user |
+| GET | `/chat/{session_id}/messages?user_id=<id>` | List messages in session |
+
+### Admin Only
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/admin/users` | List users |
+| POST | `/admin/users` | Create user/admin |
+| GET | `/admin/users/{user_id}` | Get user |
+| PUT | `/admin/users/{user_id}` | Update user |
+| DELETE | `/admin/users/{user_id}` | Delete user |
+| PATCH | `/admin/users/{user_id}/admin-access` | Grant/update admin delegation |
+| DELETE | `/admin/users/{user_id}/admin-access` | Revoke delegated admin |
+
+## Permission Keys
+
+For limited admins, current permission keys are:
+
+- `user.read`
+- `user.create`
+- `user.update`
+- `user.delete`
+- `admin.grant`
 
 ## Project Structure
 
-```
+```text
 ai-mentor-and-growth-planning-system/
 ├── backend/
 │   ├── app/
-│   │   ├── core/        # Config, DB session factory
-│   │   ├── models/      # SQLAlchemy ORM models
-│   │   ├── routers/     # FastAPI route handlers (/ping, /chat, /profile)
-│   │   ├── schemas/     # Pydantic schemas
-│   │   ├── services/    # Business-logic layer
-│   │   └── main.py      # App factory & CORS middleware
-│   ├── tests/
-│   ├── requirements.txt
-│   ├── requirements-dev.txt
-│   └── .env.example
+│   │   ├── core/       # Config, security, DB session, bootstrap
+│   │   ├── models/     # SQLAlchemy ORM models
+│   │   ├── routers/    # FastAPI route handlers
+│   │   ├── schemas/    # Pydantic DTOs
+│   │   ├── services/   # Business services (auth, user, chat)
+│   │   └── main.py
+│   └── tests/
 ├── frontend/
-│   ├── src/
-│   │   ├── api/         # Axios client + typed endpoint helpers
-│   │   ├── router/      # Vue Router (chat, profile, plan)
-│   │   └── views/       # ChatView, ProfileView, PlanView
-│   ├── package.json
-│   └── .env.example
+│   └── src/
+│       ├── api/        # Typed API wrappers
+│       ├── stores/     # Auth session store
+│       ├── router/     # Route + guards
+│       └── views/      # Login, Chat, Profile, AdminUsers, Plan
 ├── database/
-│   └── schema.sql       # Initial MySQL DDL
-├── docs/
-│   └── architecture.md  # Architecture overview
-├── .gitignore
-└── README.md            # This file
+│   └── schema.sql
+└── docs/
+    └── architecture.md
 ```
-
----
-
-## API Endpoints
-
-| Method | Path           | Description           |
-|--------|----------------|-----------------------|
-| GET    | /ping          | Health check          |
-| POST   | /chat          | Send a chat message   |
-| GET    | /profile/{id}  | Get a user profile    |
-| POST   | /profile       | Create a user profile |
-| PATCH  | /profile/{id}  | Update a user profile |
-
----
 
 ## Contributing
 
-1. Fork the repository and create a feature branch.
-2. Follow the existing code structure (routers → services → models).
-3. Add or update tests for any new functionality.
-4. Open a pull request with a clear description.
+1. Follow the layering pattern: routers -> services -> models/schemas.
+2. Add tests for behavior changes and RBAC-sensitive paths.
+3. Keep docs and env templates synchronized with code changes.

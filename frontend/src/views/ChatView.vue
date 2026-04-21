@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+
 import { listMessages, listSessions, sendMessage } from '../api/chat'
 import type { ChatMessageRead, ChatSessionRead } from '../api/chat'
+import { authState, refreshCurrentUser } from '../stores/auth'
 
-const userIdInput = ref<string>('1')
-const activeUserId = ref<number | null>(null)
 const sessions = ref<ChatSessionRead[]>([])
 const selectedSessionId = ref<number | null>(null)
 const messages = ref<ChatMessageRead[]>([])
@@ -17,27 +17,21 @@ function clearError() {
   error.value = ''
 }
 
-async function applyUserId() {
-  clearError()
-
-  const parsed = Number(userIdInput.value)
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    error.value = 'Enter a valid user ID to start chatting.'
-    return
-  }
-
-  activeUserId.value = parsed
-  await refreshSessions()
+function currentUserId(): number | null {
+  return authState.user?.id ?? null
 }
 
 async function refreshSessions() {
-  if (!activeUserId.value) {
+  const userId = currentUserId()
+  if (!userId) {
+    error.value = 'Please login first.'
     return
   }
 
   loading.value = true
+  clearError()
   try {
-    sessions.value = await listSessions(activeUserId.value)
+    sessions.value = await listSessions(userId)
 
     if (!sessions.value.length) {
       selectedSessionId.value = null
@@ -51,21 +45,23 @@ async function refreshSessions() {
 
     await loadMessages(selectedSessionId.value)
   } catch {
-    error.value = 'Could not load sessions for this user.'
+    error.value = 'Could not load sessions for current user.'
   } finally {
     loading.value = false
   }
 }
 
 async function loadMessages(sessionId: number) {
-  if (!activeUserId.value) {
+  const userId = currentUserId()
+  if (!userId) {
+    error.value = 'Please login first.'
     return
   }
 
   loading.value = true
   clearError()
   try {
-    messages.value = await listMessages(sessionId, activeUserId.value)
+    messages.value = await listMessages(sessionId, userId)
     selectedSessionId.value = sessionId
   } catch {
     error.value = 'Could not load messages for this session.'
@@ -81,9 +77,13 @@ function startNewSession() {
 
 async function submitMessage() {
   const text = input.value.trim()
-  if (!text) return
-  if (!activeUserId.value) {
-    error.value = 'Set a valid user ID before sending a message.'
+  if (!text) {
+    return
+  }
+
+  const userId = currentUserId()
+  if (!userId) {
+    error.value = 'Please login first.'
     return
   }
 
@@ -91,7 +91,7 @@ async function submitMessage() {
   loading.value = true
   try {
     const response = await sendMessage({
-      user_id: activeUserId.value,
+      user_id: userId,
       session_id: selectedSessionId.value ?? undefined,
       title: newSessionTitle.value.trim() || undefined,
       message: text,
@@ -109,7 +109,10 @@ async function submitMessage() {
 }
 
 onMounted(async () => {
-  await applyUserId()
+  if (!authState.user) {
+    await refreshCurrentUser()
+  }
+  await refreshSessions()
 })
 </script>
 
@@ -118,12 +121,10 @@ onMounted(async () => {
     <h1>AI Mentor Chat</h1>
 
     <div class="controls card">
-      <label>
-        User ID
-        <input v-model="userIdInput" min="1" type="number" />
-      </label>
-      <button :disabled="loading" @click="applyUserId">Load User Sessions</button>
-      <button :disabled="loading" @click="startNewSession">New Chat</button>
+      <div class="session-actions">
+        <button :disabled="loading" @click="refreshSessions">Refresh Sessions</button>
+        <button :disabled="loading" @click="startNewSession">New Chat</button>
+      </div>
       <label>
         New Session Title (optional)
         <input v-model="newSessionTitle" placeholder="e.g. Midterm recovery plan" />
@@ -188,10 +189,15 @@ onMounted(async () => {
 
 .controls {
   display: grid;
-  grid-template-columns: 140px auto auto minmax(220px, 1fr);
+  grid-template-columns: auto minmax(220px, 1fr);
   gap: 0.65rem;
   align-items: end;
   margin-bottom: 1rem;
+}
+
+.session-actions {
+  display: flex;
+  gap: 0.65rem;
 }
 
 label {

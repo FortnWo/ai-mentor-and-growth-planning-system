@@ -1,30 +1,37 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { createUser, deleteUser, getUser, updateUser } from '../api/user'
-import type { UserCreatePayload, UserRead, UserUpdatePayload } from '../api/user'
+import { onMounted, reactive, ref } from 'vue'
+
+import { changeMyPassword, getMyProfile, updateMyProfile } from '../api/profile'
+import type { UserRead } from '../api/user'
+import { authState, refreshCurrentUser } from '../stores/auth'
 
 type ProfileFormState = {
-  username: string
-  email: string
   full_name: string
   major: string
   year_of_study: string
   bio: string
 }
 
+type PasswordFormState = {
+  current_password: string
+  new_password: string
+}
+
 const profile = ref<UserRead | null>(null)
-const profileLookupId = ref<string>('1')
 const feedback = ref<string>('')
 const error = ref<string>('')
 const submitting = ref<boolean>(false)
 
-const form = reactive<ProfileFormState>({
-  username: '',
-  email: '',
+const profileForm = reactive<ProfileFormState>({
   full_name: '',
   major: '',
   year_of_study: '',
   bio: '',
+})
+
+const passwordForm = reactive<PasswordFormState>({
+  current_password: '',
+  new_password: '',
 })
 
 function clearMessages() {
@@ -33,12 +40,10 @@ function clearMessages() {
 }
 
 function syncFormFromProfile(user: UserRead) {
-  form.username = user.username
-  form.email = user.email
-  form.full_name = user.full_name ?? ''
-  form.major = user.major ?? ''
-  form.year_of_study = user.year_of_study ? String(user.year_of_study) : ''
-  form.bio = user.bio ?? ''
+  profileForm.full_name = user.full_name ?? ''
+  profileForm.major = user.major ?? ''
+  profileForm.year_of_study = user.year_of_study ? String(user.year_of_study) : ''
+  profileForm.bio = user.bio ?? ''
 }
 
 function toNullableNumber(value: string): number | undefined {
@@ -47,49 +52,19 @@ function toNullableNumber(value: string): number | undefined {
   }
 
   const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : undefined
+  return Number.isInteger(parsed) ? parsed : undefined
 }
 
-function buildCreatePayload(): UserCreatePayload {
-  return {
-    username: form.username.trim(),
-    email: form.email.trim(),
-    full_name: form.full_name.trim() || undefined,
-    major: form.major.trim() || undefined,
-    year_of_study: toNullableNumber(form.year_of_study),
-    bio: form.bio.trim() || undefined,
-  }
-}
-
-function buildUpdatePayload(): UserUpdatePayload {
-  return {
-    username: form.username.trim() || undefined,
-    email: form.email.trim() || undefined,
-    full_name: form.full_name.trim() || undefined,
-    major: form.major.trim() || undefined,
-    year_of_study: toNullableNumber(form.year_of_study),
-    bio: form.bio.trim() || undefined,
-  }
-}
-
-async function loadUser() {
+async function loadMyProfile() {
   clearMessages()
-
-  const id = Number(profileLookupId.value)
-  if (!Number.isInteger(id) || id <= 0) {
-    error.value = 'Please enter a valid numeric user ID.'
-    return
-  }
 
   try {
     submitting.value = true
-    const user = await getUser(id)
-    profile.value = user
-    syncFormFromProfile(user)
-    feedback.value = `Loaded profile #${user.id}.`
+    const data = await getMyProfile()
+    profile.value = data
+    syncFormFromProfile(data)
   } catch {
-    profile.value = null
-    error.value = 'User not found for that ID.'
+    error.value = 'Could not load your profile.'
   } finally {
     submitting.value = false
   }
@@ -98,126 +73,125 @@ async function loadUser() {
 async function saveProfile() {
   clearMessages()
 
-  if (!form.username.trim() || !form.email.trim()) {
-    error.value = 'Username and email are required.'
-    return
-  }
-
   try {
     submitting.value = true
-    if (profile.value) {
-      const updated = await updateUser(profile.value.id, buildUpdatePayload())
-      profile.value = updated
-      syncFormFromProfile(updated)
-      feedback.value = `Profile #${updated.id} updated.`
-    } else {
-      const created = await createUser(buildCreatePayload())
-      profile.value = created
-      profileLookupId.value = String(created.id)
-      syncFormFromProfile(created)
-      feedback.value = `Profile #${created.id} created.`
-    }
+    const updated = await updateMyProfile({
+      full_name: profileForm.full_name.trim() || undefined,
+      major: profileForm.major.trim() || undefined,
+      year_of_study: toNullableNumber(profileForm.year_of_study),
+      bio: profileForm.bio.trim() || undefined,
+    })
+
+    profile.value = updated
+    syncFormFromProfile(updated)
+    feedback.value = 'Profile updated successfully.'
   } catch {
-    error.value = 'Save failed. Check whether username/email are unique and valid.'
+    error.value = 'Profile update failed.'
   } finally {
     submitting.value = false
   }
 }
 
-async function removeProfile() {
-  if (!profile.value) {
-    error.value = 'No loaded profile to delete.'
-    return
-  }
-
+async function updatePassword() {
   clearMessages()
 
+  if (!passwordForm.current_password.trim() || !passwordForm.new_password.trim()) {
+    error.value = 'Please enter both current and new password.'
+    return
+  }
+
   try {
     submitting.value = true
-    await deleteUser(profile.value.id)
-    feedback.value = `Profile #${profile.value.id} deleted.`
-    profile.value = null
+    const updated = await changeMyPassword({
+      current_password: passwordForm.current_password,
+      new_password: passwordForm.new_password,
+    })
+
+    profile.value = updated
+    passwordForm.current_password = ''
+    passwordForm.new_password = ''
+    feedback.value = 'Password changed successfully.'
   } catch {
-    error.value = 'Delete failed.'
+    error.value = 'Password change failed. Check your current password and password policy.'
   } finally {
     submitting.value = false
   }
 }
+
+onMounted(async () => {
+  if (!authState.user) {
+    await refreshCurrentUser()
+  }
+  await loadMyProfile()
+})
 </script>
 
 <template>
   <div class="view">
-    <h1>Profile</h1>
+    <h1>My Profile</h1>
 
-    <div class="toolbar card">
-      <label>
-        Load User ID
-        <input v-model="profileLookupId" type="number" min="1" placeholder="e.g. 1" />
-      </label>
-      <button :disabled="submitting" @click="loadUser">Load</button>
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="feedback" class="success">{{ feedback }}</p>
+
+    <div v-if="profile" class="card basic">
+      <p><strong>Username:</strong> {{ profile.username }}</p>
+      <p><strong>Email:</strong> {{ profile.email }}</p>
+      <p><strong>Role:</strong> {{ profile.role }}</p>
+      <p><strong>Status:</strong> {{ profile.is_active ? 'Active' : 'Disabled' }}</p>
+      <p v-if="profile.last_login_at"><strong>Last Login:</strong> {{ new Date(profile.last_login_at).toLocaleString() }}</p>
     </div>
 
     <form class="card form" @submit.prevent="saveProfile">
-      <label>
-        Username *
-        <input v-model="form.username" required />
-      </label>
-
-      <label>
-        Email *
-        <input v-model="form.email" required type="email" />
-      </label>
+      <h2>Profile Details</h2>
 
       <label>
         Full Name
-        <input v-model="form.full_name" />
+        <input v-model="profileForm.full_name" />
       </label>
 
       <label>
         Major
-        <input v-model="form.major" />
+        <input v-model="profileForm.major" />
       </label>
 
       <label>
         Year Of Study
-        <input v-model="form.year_of_study" type="number" min="1" max="12" />
+        <input v-model="profileForm.year_of_study" type="number" min="1" max="12" />
       </label>
 
-      <label>
+      <label class="span-2">
         Bio
-        <textarea v-model="form.bio" rows="4" />
+        <textarea v-model="profileForm.bio" rows="4" />
       </label>
 
-      <div class="actions">
-        <button :disabled="submitting" type="submit">
-          {{ profile ? 'Update Profile' : 'Create Profile' }}
-        </button>
-        <button :disabled="submitting || !profile" class="danger" type="button" @click="removeProfile">
-          Delete
-        </button>
+      <div class="actions span-2">
+        <button :disabled="submitting" type="submit">Save Profile</button>
       </div>
     </form>
 
-    <p v-if="feedback" class="success">{{ feedback }}</p>
-    <p v-if="error" class="error">{{ error }}</p>
+    <form class="card form" @submit.prevent="updatePassword">
+      <h2>Change Password</h2>
 
-    <div v-if="profile" class="card details">
-      <p><strong>ID:</strong> {{ profile.id }}</p>
-      <p><strong>Username:</strong> {{ profile.username }}</p>
-      <p><strong>Email:</strong> {{ profile.email }}</p>
-      <p v-if="profile.full_name"><strong>Name:</strong> {{ profile.full_name }}</p>
-      <p v-if="profile.major"><strong>Major:</strong> {{ profile.major }}</p>
-      <p v-if="profile.year_of_study"><strong>Year:</strong> {{ profile.year_of_study }}</p>
-      <p v-if="profile.bio"><strong>Bio:</strong> {{ profile.bio }}</p>
-      <p><strong>Created:</strong> {{ new Date(profile.created_at).toLocaleString() }}</p>
-      <p><strong>Updated:</strong> {{ new Date(profile.updated_at).toLocaleString() }}</p>
-    </div>
+      <label>
+        Current Password
+        <input v-model="passwordForm.current_password" type="password" />
+      </label>
+
+      <label>
+        New Password
+        <input v-model="passwordForm.new_password" type="password" />
+      </label>
+
+      <div class="actions span-2">
+        <button :disabled="submitting" type="submit">Update Password</button>
+      </div>
+    </form>
   </div>
 </template>
 
 <style scoped>
 .view {
-  max-width: 760px;
+  max-width: 820px;
   margin: 2rem auto;
   padding: 1rem;
   text-align: left;
@@ -231,16 +205,19 @@ async function removeProfile() {
   background: #fff;
 }
 
-.toolbar {
-  display: flex;
-  gap: 0.75rem;
-  align-items: end;
+.basic p {
+  margin: 0.3rem 0;
 }
 
 .form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 0.75rem;
+}
+
+h2 {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 label {
@@ -265,9 +242,7 @@ textarea {
 
 .actions {
   display: flex;
-  align-items: end;
   gap: 0.5rem;
-  grid-column: 1 / -1;
 }
 
 button {
@@ -279,17 +254,9 @@ button {
   cursor: pointer;
 }
 
-.danger {
-  background: #b91c1c;
-}
-
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.details p {
-  margin: 0.3rem 0;
 }
 
 .success {
@@ -298,5 +265,15 @@ button:disabled {
 
 .error {
   color: #b91c1c;
+}
+
+.span-2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

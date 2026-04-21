@@ -1,7 +1,48 @@
+from openai import OpenAI
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.schemas.chat import ChatSendRequest
+
+
+def _get_ai_client() -> OpenAI:
+    if not settings.LLM_API_KEY:
+        raise RuntimeError("LLM_API_KEY is not configured")
+    if not settings.LLM_API_BASE_URL:
+        raise RuntimeError("LLM_API_BASE_URL is not configured")
+
+    return OpenAI(
+        base_url=settings.LLM_API_BASE_URL,
+        api_key=settings.LLM_API_KEY,
+    )
+
+
+def _extract_response_text(response) -> str:
+    output_text = getattr(response, "output_text", None)
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    output = getattr(response, "output", None) or []
+    chunks: list[str] = []
+
+    for item in output:
+        if getattr(item, "type", None) != "message":
+            continue
+
+        content_items = getattr(item, "content", None) or []
+        for content_item in content_items:
+            if getattr(content_item, "type", None) != "output_text":
+                continue
+
+            text = getattr(content_item, "text", None)
+            if isinstance(text, str) and text.strip():
+                chunks.append(text.strip())
+
+    if chunks:
+        return "\n".join(chunks).strip()
+
+    raise RuntimeError("AI response did not contain any text content")
 
 
 def create_session(db: Session, user_id: int, title: str | None = None) -> ChatSession:
@@ -72,12 +113,21 @@ def suggest_session_title(message: str) -> str:
 
 
 def build_ai_response(message: str) -> str:
-    return (
-        "Here is a starter plan: 1) clarify your goal, "
-        "2) break it into weekly milestones, "
-        "3) track wins and blockers. "
-        f"You said: {message.strip()}"
-    )
+    try:
+        client = _get_ai_client()
+        if not settings.LLM_MODEL:
+            raise RuntimeError("LLM_MODEL is not configured")
+        response = client.responses.create(
+            model=settings.LLM_MODEL,
+            instructions=settings.LLM_SYSTEM_PROMPT or None,
+            input=message.strip(),
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"AI provider request failed: {exc}") from exc
+
+    return _extract_response_text(response)
 
 
 def send_message(db: Session, payload: ChatSendRequest) -> tuple[ChatSession, ChatMessage, ChatMessage]:
@@ -93,10 +143,11 @@ def send_message(db: Session, payload: ChatSendRequest) -> tuple[ChatSession, Ch
         role=MessageRole.USER,
         content=payload.message.strip(),
     )
+    assistant_content = build_ai_response(payload.message)
     assistant_message = ChatMessage(
         session_id=session.id,
         role=MessageRole.ASSISTANT,
-        content=build_ai_response(payload.message),
+        content=assistant_content,
     )
 
     db.add_all([user_message, assistant_message])
