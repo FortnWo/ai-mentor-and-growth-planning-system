@@ -1,16 +1,58 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { authState, clearAuthSession, isAdmin, loadStoredAuthState, refreshCurrentUser } from './stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const mobileMenuOpen = ref(false)
+const glowX = ref(0)
+const glowY = ref(0)
+const glowVisible = ref(false)
 
 const authenticated = computed(() => Boolean(authState.token))
 const admin = computed(() => isAdmin(authState.user))
 const userLabel = computed(() => authState.user?.full_name || authState.user?.username || 'User')
+const workspaceTitle = computed(() => {
+  if (route.path === '/chat') {
+    return 'Conversation studio'
+  }
+
+  if (route.path === '/profile') {
+    return 'Identity workspace'
+  }
+
+  if (route.path === '/plan') {
+    return 'Growth roadmap'
+  }
+
+  if (route.path.startsWith('/admin')) {
+    return 'Admin command center'
+  }
+
+  return 'AI mentor workspace'
+})
+const workspaceSubtitle = computed(() => {
+  if (route.path === '/chat') {
+    return 'Track sessions, compare context, and keep the discussion flow visually calm.'
+  }
+
+  if (route.path === '/profile') {
+    return 'Review your identity snapshot and keep the profile clean, focused, and current.'
+  }
+
+  if (route.path === '/plan') {
+    return 'A future planning surface with a strong, cinematic header and room for growth signals.'
+  }
+
+  if (route.path.startsWith('/admin')) {
+    return 'High-density controls with a premium dashboard rhythm for faster moderation.'
+  }
+
+  return 'A glassy interface with animated atmosphere, clear hierarchy, and fast navigation.'
+})
 const navigationItems = computed(() => {
   if (!authenticated.value) {
     return [{ to: '/login', label: 'Login' }]
@@ -28,11 +70,31 @@ function closeMobileMenu() {
   mobileMenuOpen.value = false
 }
 
+function updateGlowPosition(event: PointerEvent) {
+  glowX.value = event.clientX
+  glowY.value = event.clientY
+  glowVisible.value = true
+}
+
+function hideGlow() {
+  glowVisible.value = false
+}
+
 onMounted(async () => {
   loadStoredAuthState()
   if (authState.token && !authState.user) {
     await refreshCurrentUser()
   }
+
+  window.addEventListener('pointermove', updateGlowPosition)
+  window.addEventListener('pointerdown', updateGlowPosition)
+  window.addEventListener('blur', hideGlow)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', updateGlowPosition)
+  window.removeEventListener('pointerdown', updateGlowPosition)
+  window.removeEventListener('blur', hideGlow)
 })
 
 async function logout() {
@@ -44,6 +106,14 @@ async function logout() {
 
 <template>
   <div class="app-shell">
+    <div
+      class="pointer-glow"
+      :class="{ 'is-visible': glowVisible }"
+      :style="{ '--glow-x': `${glowX}px`, '--glow-y': `${glowY}px` }"
+    ></div>
+
+    <div class="ambient-orb"></div>
+
     <header class="app-header glass-card">
       <RouterLink class="brand" to="/chat" @click="closeMobileMenu">
         <span class="brand-mark">
@@ -114,6 +184,59 @@ async function logout() {
     </transition>
 
     <main class="app-main">
+      <section v-if="authenticated" class="hero-frame glass-card panel app-hero reveal">
+        <div class="app-hero__copy">
+          <p class="page-kicker">{{ workspaceTitle }}</p>
+          <h1 class="page-title">{{ workspaceSubtitle }}</h1>
+          <p class="page-subtitle">
+            {{
+              admin
+                ? 'Administrative access enabled. The control surface is tuned for speed and clarity.'
+                : 'Your workspace is ready. Move between mentoring, profile, and planning with a stronger visual rhythm.'
+            }}
+          </p>
+
+          <div class="hero-actions">
+            <RouterLink class="button button--primary" to="/chat">Open Chat</RouterLink>
+            <RouterLink class="button button--ghost" to="/plan">View Plan</RouterLink>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="hero-visual__stage">
+            <div class="hero-visual__ring">
+              <div class="hero-visual__core"></div>
+            </div>
+          </div>
+
+          <div class="hero-floating">
+            <article class="hero-floating__card">
+              <p class="hero-floating__label">Workspace</p>
+              <p class="hero-floating__value">Live</p>
+              <p class="hero-floating__trend">Dynamic layout with motion layers</p>
+            </article>
+
+            <article class="hero-floating__card">
+              <p class="hero-floating__label">Role</p>
+              <p class="hero-floating__value">{{ admin ? 'Admin' : 'Student' }}</p>
+              <p class="hero-floating__trend">{{ admin ? 'Control access and users' : 'Plan and chat with AI' }}</p>
+            </article>
+
+            <article class="hero-floating__card">
+              <p class="hero-floating__label">Status</p>
+              <p class="hero-floating__value">Synced</p>
+              <p class="hero-floating__trend">CORS + API route connected</p>
+            </article>
+
+            <article class="hero-floating__card">
+              <p class="hero-floating__label">Motion</p>
+              <p class="hero-floating__value">On</p>
+              <p class="hero-floating__trend">Glow, drift, and reveal animations</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <RouterView />
     </main>
   </div>

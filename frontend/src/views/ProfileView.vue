@@ -4,6 +4,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { changeMyPassword, getMyProfile, updateMyProfile } from '../api/profile'
 import type { UserRead } from '../api/user'
 import { authState, refreshCurrentUser } from '../stores/auth'
+import { parseOptionalInteger } from '../utils/number'
 
 type ProfileFormState = {
   full_name: string
@@ -46,15 +47,6 @@ function syncFormFromProfile(user: UserRead) {
   profileForm.bio = user.bio ?? ''
 }
 
-function toNullableNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined
-  }
-
-  const parsed = Number(value)
-  return Number.isInteger(parsed) ? parsed : undefined
-}
-
 async function loadMyProfile() {
   clearMessages()
 
@@ -78,7 +70,7 @@ async function saveProfile() {
     const updated = await updateMyProfile({
       full_name: profileForm.full_name.trim() || undefined,
       major: profileForm.major.trim() || undefined,
-      year_of_study: toNullableNumber(profileForm.year_of_study),
+      year_of_study: parseOptionalInteger(profileForm.year_of_study),
       bio: profileForm.bio.trim() || undefined,
     })
 
@@ -128,7 +120,7 @@ onMounted(async () => {
 
 <template>
   <div class="page page--wide profile-page">
-    <section class="page-header glass-card panel">
+    <section class="page-header glass-card panel hero-frame reveal">
       <div class="title-row">
         <div>
           <p class="page-kicker">Personal workspace</p>
@@ -172,7 +164,7 @@ onMounted(async () => {
     <p v-if="feedback" class="feedback feedback--success">{{ feedback }}</p>
 
     <div class="grid-2 profile-grid">
-      <section v-if="profile" class="panel profile-summary">
+      <section v-if="profile" class="panel profile-summary reveal reveal--delay-1">
         <div class="title-row">
           <div>
             <p class="eyebrow">Account summary</p>
@@ -194,7 +186,7 @@ onMounted(async () => {
         </div>
       </section>
 
-      <form class="panel form-card" @submit.prevent="saveProfile">
+      <form class="panel form-card reveal reveal--delay-2" @submit.prevent="saveProfile">
         <div class="title-row">
           <div>
             <p class="eyebrow">Profile details</p>
@@ -227,7 +219,7 @@ onMounted(async () => {
         </div>
       </form>
 
-      <form class="panel form-card" @submit.prevent="updatePassword">
+      <form class="panel form-card reveal reveal--delay-3" @submit.prevent="updatePassword">
         <div class="title-row">
           <div>
             <p class="eyebrow">Security</p>

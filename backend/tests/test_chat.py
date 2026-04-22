@@ -139,6 +139,59 @@ def test_list_messages_with_invalid_session_returns_not_found(client):
     assert response.status_code == 404
 
 
+def test_delete_session_removes_session_and_messages(client, mocked_ai_response):
+    user_id = create_user(client, 5)
+
+    send_response = client.post(
+        "/chat",
+        json={
+            "user_id": user_id,
+            "message": "Please help me organize my week.",
+        },
+    )
+    session_id = send_response.json()["session"]["id"]
+
+    delete_response = client.delete(
+        f"/chat/{session_id}",
+        params={"user_id": user_id},
+    )
+    assert delete_response.status_code == 204
+
+    sessions_response = client.get("/chat/sessions", params={"user_id": user_id})
+    assert sessions_response.status_code == 200
+    assert sessions_response.json() == []
+
+    messages_response = client.get(f"/chat/{session_id}/messages", params={"user_id": user_id})
+    assert messages_response.status_code == 404
+
+
+def test_rename_session_updates_the_session_title(client, mocked_ai_response):
+    user_id = create_user(client, 6)
+
+    send_response = client.post(
+        "/chat",
+        json={
+            "user_id": user_id,
+            "message": "Draft my weekly study plan.",
+        },
+    )
+    session_id = send_response.json()["session"]["id"]
+
+    rename_response = client.patch(
+        f"/chat/{session_id}",
+        params={"user_id": user_id},
+        json={"title": "Weekly Study Sprint"},
+    )
+
+    assert rename_response.status_code == 200
+    assert rename_response.json()["id"] == session_id
+    assert rename_response.json()["title"] == "Weekly Study Sprint"
+
+    sessions_response = client.get("/chat/sessions", params={"user_id": user_id})
+    assert sessions_response.status_code == 200
+    assert sessions_response.json()[0]["title"] == "Weekly Study Sprint"
+
+
 def test_extract_response_text_from_responses_api_output():
     fake_response = type(
         "FakeResponse",

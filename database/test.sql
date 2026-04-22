@@ -15,6 +15,13 @@ CREATE TABLE IF NOT EXISTS users (
     id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username        VARCHAR(100)  NOT NULL UNIQUE,
     email           VARCHAR(255)  NOT NULL UNIQUE,
+    password_hash   VARCHAR(255)  NOT NULL,
+    role            ENUM('admin', 'user') NOT NULL DEFAULT 'user',
+    is_active       TINYINT(1)    NOT NULL DEFAULT 1,
+    admin_permission_level ENUM('full', 'limited') NULL,
+    admin_permissions JSON NULL,
+    admin_expires_at DATETIME NULL,
+    last_login_at   DATETIME NULL,
     full_name       VARCHAR(255)  NULL,
     major           VARCHAR(255)  NULL,
     year_of_study   TINYINT UNSIGNED NULL,
@@ -48,3 +55,4 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     CONSTRAINT fk_messages_session FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
     INDEX idx_messages_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

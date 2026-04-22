@@ -16,6 +16,8 @@ import type {
   UserRole,
 } from '../api/user'
 import { authState, refreshCurrentUser } from '../stores/auth'
+import { getApiErrorMessage } from '../utils/apiError'
+import { parseOptionalInteger } from '../utils/number'
 
 type CreateFormState = {
   username: string
@@ -81,15 +83,6 @@ function clearMessages() {
   error.value = ''
 }
 
-function toNullableNumber(value: string): number | undefined {
-  if (!value.trim()) {
-    return undefined
-  }
-
-  const parsed = Number(value)
-  return Number.isInteger(parsed) ? parsed : undefined
-}
-
 function parsePermissions(value: string): string[] {
   return value
     .split(',')
@@ -124,6 +117,7 @@ async function refreshUsers() {
 }
 
 function buildCreatePayload(): UserCreatePayload {
+  const yearOfStudy = parseOptionalInteger(createForm.year_of_study)
   const payload: UserCreatePayload = {
     username: createForm.username.trim(),
     email: createForm.email.trim(),
@@ -132,7 +126,7 @@ function buildCreatePayload(): UserCreatePayload {
     is_active: createForm.is_active,
     full_name: createForm.full_name.trim() || undefined,
     major: createForm.major.trim() || undefined,
-    year_of_study: toNullableNumber(createForm.year_of_study),
+    year_of_study: yearOfStudy,
     bio: createForm.bio.trim() || undefined,
   }
 
@@ -168,6 +162,12 @@ async function submitCreateUser() {
     return
   }
 
+  const yearOfStudy = parseOptionalInteger(createForm.year_of_study)
+  if (createForm.year_of_study !== '' && yearOfStudy === undefined) {
+    error.value = 'Year of study must be an integer between 1 and 12.'
+    return
+  }
+
   if (createForm.role === 'user' && !/^\d{10}$/.test(createForm.username.trim())) {
     error.value = 'Student username must be a 10-digit student ID.'
     return
@@ -179,8 +179,8 @@ async function submitCreateUser() {
     feedback.value = `Created user #${created.id} (${created.username}).`
     resetCreateForm()
     await refreshUsers()
-  } catch {
-    error.value = 'Create user failed. Check uniqueness and role rules.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Create user failed. Check uniqueness and role rules.')
   } finally {
     creating.value = false
   }
@@ -194,8 +194,8 @@ async function toggleActive(user: UserRead) {
     const updated = await updateUser(user.id, { is_active: !user.is_active })
     feedback.value = `Updated status for #${updated.id}.`
     await refreshUsers()
-  } catch {
-    error.value = 'Failed to update user status.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Failed to update user status.')
   } finally {
     actionLoadingId.value = null
   }
@@ -214,8 +214,8 @@ async function quickGrantAdmin(user: UserRead) {
     })
     feedback.value = `Granted temporary admin access to #${updated.id}.`
     await refreshUsers()
-  } catch {
-    error.value = 'Failed to grant admin access.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Failed to grant admin access.')
   } finally {
     actionLoadingId.value = null
   }
@@ -245,8 +245,8 @@ async function applyGrantForm() {
     })
     feedback.value = `Updated admin privileges for #${updated.id}.`
     await refreshUsers()
-  } catch {
-    error.value = 'Failed to apply admin privilege update.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Failed to apply admin privilege update.')
   } finally {
     actionLoadingId.value = null
   }
@@ -260,8 +260,8 @@ async function revokeAdmin(user: UserRead) {
     const updated = await revokeAdminAccess(user.id)
     feedback.value = `Revoked admin access for #${updated.id}.`
     await refreshUsers()
-  } catch {
-    error.value = 'Failed to revoke admin access.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Failed to revoke admin access.')
   } finally {
     actionLoadingId.value = null
   }
@@ -284,8 +284,8 @@ async function removeUser(user: UserRead) {
     await deleteUser(user.id)
     feedback.value = `Deleted user #${user.id}.`
     await refreshUsers()
-  } catch {
-    error.value = 'Failed to delete user.'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, 'Failed to delete user.')
   } finally {
     actionLoadingId.value = null
   }
@@ -301,7 +301,7 @@ onMounted(async () => {
 
 <template>
   <div class="page page--wide admin-page">
-    <section class="page-header glass-card panel">
+    <section class="page-header glass-card panel hero-frame reveal">
       <div class="title-row">
         <div>
           <p class="page-kicker">Admin console</p>
@@ -349,7 +349,7 @@ onMounted(async () => {
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
     <div class="grid-2 admin-grid">
-      <section class="panel form-panel">
+      <section class="panel form-panel reveal reveal--delay-1">
         <div class="title-row">
           <div>
             <p class="eyebrow">Create account</p>
@@ -383,6 +383,7 @@ onMounted(async () => {
           <label class="field">
             <span class="label">Initial Password</span>
             <input v-model="createForm.password" class="input" type="password" />
+            <small class="hint">At least 8 characters.</small>
           </label>
 
           <label class="field">
@@ -397,7 +398,15 @@ onMounted(async () => {
 
           <label class="field">
             <span class="label">Year Of Study</span>
-            <input v-model="createForm.year_of_study" class="input" type="number" min="1" max="12" />
+            <input
+              v-model="createForm.year_of_study"
+              class="input"
+              type="number"
+              min="1"
+              max="12"
+              step="1"
+            />
+            <small class="hint">Use an integer from 1 to 12, or leave it blank.</small>
           </label>
 
           <label class="field field--inline">
@@ -436,7 +445,7 @@ onMounted(async () => {
         </form>
       </section>
 
-      <section class="panel form-panel">
+      <section class="panel form-panel reveal reveal--delay-2">
         <div class="title-row">
           <div>
             <p class="eyebrow">Privilege control</p>
@@ -478,7 +487,7 @@ onMounted(async () => {
       </section>
     </div>
 
-    <section class="panel table-panel">
+    <section class="panel table-panel reveal reveal--delay-3">
       <div class="title-row">
         <div>
           <p class="eyebrow">User list</p>
@@ -609,6 +618,12 @@ onMounted(async () => {
   font-family: var(--font-display);
   color: var(--heading);
   font-size: clamp(1.2rem, 2vw, 1.6rem);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .span-all {

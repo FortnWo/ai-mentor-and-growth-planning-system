@@ -4,7 +4,7 @@
 
 <template>
   <div class="page page--wide plan-page">
-    <section class="page-header glass-card panel">
+    <section class="page-header glass-card panel hero-frame reveal">
       <p class="page-kicker">Roadmap preview</p>
       <h1 class="page-title">Growth Plan</h1>
       <p class="page-subtitle">
@@ -17,7 +17,7 @@
       </div>
     </section>
 
-    <section class="grid-3">
+    <section class="grid-3 reveal reveal--delay-1">
       <article class="stat-card">
         <p class="stat-label">Stage 1</p>
         <p class="stat-value">Discover</p>
@@ -37,7 +37,7 @@
       </article>
     </section>
 
-    <section class="panel roadmap-panel">
+    <section class="panel roadmap-panel reveal reveal--delay-2">
       <div class="title-row">
         <div>
           <p class="eyebrow">Coming soon</p>

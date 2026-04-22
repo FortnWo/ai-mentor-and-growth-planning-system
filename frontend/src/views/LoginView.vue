@@ -45,7 +45,7 @@ async function submit() {
 
 <template>
   <div class="page auth-page">
-    <section class="auth-shell glass-card">
+    <section class="auth-shell glass-card hero-frame reveal">
       <div class="auth-copy">
         <p class="page-kicker">Secure access</p>
         <h1 class="page-title">Sign in to your mentor workspace.</h1>

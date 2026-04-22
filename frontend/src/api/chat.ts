@@ -9,6 +9,10 @@ export interface ChatSessionRead {
   created_at: string
 }
 
+export interface RenameSessionPayload {
+  title: string
+}
+
 export interface ChatMessageRead {
   id: number
   session_id: number
@@ -49,4 +53,26 @@ export const listMessages = (sessionId: number, userId?: number): Promise<ChatMe
         user_id: userId,
       },
     })
+    .then((response) => response.data)
+
+export const deleteSession = (sessionId: number, userId: number): Promise<void> =>
+  apiClient
+    .delete(`/chat/${sessionId}`, {
+      params: {
+        user_id: userId,
+      },
+    })
+    .then(() => undefined)
+
+export const renameSession = (sessionId: number, userId: number, title: string): Promise<ChatSessionRead> =>
+  apiClient
+    .patch<ChatSessionRead>(
+      `/chat/${sessionId}`,
+      { title } satisfies RenameSessionPayload,
+      {
+        params: {
+          user_id: userId,
+        },
+      },
+    )
     .then((response) => response.data)

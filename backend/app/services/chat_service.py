@@ -100,6 +100,27 @@ def list_messages_for_session(
     )
 
 
+def delete_session_for_user(db: Session, user_id: int, session_id: int) -> bool:
+    session = get_session_for_user(db, user_id=user_id, session_id=session_id)
+    if not session:
+        return False
+
+    db.delete(session)
+    db.commit()
+    return True
+
+
+def rename_session_for_user(db: Session, user_id: int, session_id: int, title: str) -> ChatSession | None:
+    session = get_session_for_user(db, user_id=user_id, session_id=session_id)
+    if not session:
+        return None
+
+    session.title = title
+    db.commit()
+    db.refresh(session)
+    return session
+
+
 def suggest_session_title(message: str) -> str:
     text = " ".join(message.strip().split())
     if not text:

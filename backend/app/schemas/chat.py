@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MessageRole(str, Enum):
@@ -17,8 +17,17 @@ class ChatSessionCreate(ChatSessionBase):
     user_id: int = Field(gt=0)
 
 
-class ChatSessionUpdate(BaseModel):
-    title: str | None = Field(default=None, max_length=255)
+class ChatSessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Session title cannot be empty")
+
+        return normalized
 
 
 class ChatSessionRead(ChatSessionBase):
@@ -61,3 +70,7 @@ class ChatSendResponse(BaseModel):
     session: ChatSessionRead
     user_message: ChatMessageRead
     assistant_message: ChatMessageRead
+
+
+class ChatDeleteResponse(BaseModel):
+    success: bool = True
