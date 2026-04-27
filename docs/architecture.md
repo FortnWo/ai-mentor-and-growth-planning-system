@@ -15,6 +15,7 @@
 Vue SPA
     -> API wrappers (src/api)
     -> Axios client with bearer interceptor
+    -> WebSocket channel (/ws) for push events
     -> FastAPI routers
     -> Service layer (auth/user/chat)
     -> SQLAlchemy models
@@ -37,12 +38,13 @@ The backend follows a layered approach:
 - `app/core/database.py`: engine, session, declarative base.
 - `app/core/security.py`: password hashing, JWT create/decode, auth dependencies.
 - `app/core/bootstrap.py`: optional startup admin bootstrap.
+- `app/core/ws_manager.py`: in-memory websocket connection manager (per-user connections).
 
 ### Services
 
 - `app/services/auth_service.py`: login flow and token response assembly.
 - `app/services/user_service.py`: user CRUD, profile update, password update, admin delegation logic.
-- `app/services/chat_service.py`: session/message persistence and LLM interaction.
+- `app/services/chat_service.py`: session/message persistence, background LLM interaction, message status serialization, and websocket notifications.
 
 ### Routers
 
@@ -50,7 +52,21 @@ The backend follows a layered approach:
 - `app/routers/auth.py`: login and current-user endpoint.
 - `app/routers/profile.py`: current-user profile endpoints.
 - `app/routers/user.py`: admin-only user management and delegation endpoints.
-- `app/routers/chat.py`: chat send/list endpoints.
+- `app/routers/chat.py`: chat send/list endpoints (JWT-bound user identity).
+- `app/routers/ws.py`: websocket endpoint for real-time chat updates.
+
+## Chat Delivery Flow
+
+1. `POST /chat` persists the user message synchronously and returns immediately.
+2. A background task creates an assistant placeholder (`pending`) and starts heartbeat push events.
+3. LLM generation completes in background and updates the same assistant row to final content.
+4. Backend pushes `new_message` via websocket; frontend replaces placeholder.
+
+Message status semantics:
+
+- `pending`: unresolved assistant placeholder.
+- `completed`: assistant response generated successfully.
+- `failed`: assistant generation failed and fallback error text is stored.
 
 ## Authentication and RBAC
 
@@ -92,6 +108,10 @@ The backend follows a layered approach:
 - `GET /chat/sessions`
 - `GET /chat/{session_id}/messages`
 
+### Realtime
+
+- `WS /ws?token=<jwt>`
+
 ### Admin-only
 
 - `GET /admin/users`
@@ -114,6 +134,7 @@ The backend follows a layered approach:
 FastAPI uses a lifespan hook to:
 
 1. create database tables (if missing),
-2. run bootstrap admin creation if bootstrap env vars are configured.
+2. run bootstrap admin creation if bootstrap env vars are configured,
+3. attach the main asyncio event loop to websocket manager for cross-thread push scheduling.
 
 This keeps local/dev startup consistent and avoids deprecated startup event hooks.

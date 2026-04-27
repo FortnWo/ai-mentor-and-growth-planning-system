@@ -3,7 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 
 import CompactActionMenu from '../components/CompactActionMenu.vue'
 import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
-import type { ChatMessageRead, ChatSessionRead } from '../api/chat'
+import { createWebSocket } from '../utils/ws'
+import type { ChatMessageRead, ChatSessionRead, MessageDeliveryStatus } from '../api/chat'
 import { authState, refreshCurrentUser } from '../stores/auth'
 
 const sessions = ref<ChatSessionRead[]>([])
@@ -17,31 +18,138 @@ const renameDraftTitle = ref<string>('')
 const deletingSessionId = ref<number | null>(null)
 const error = ref<string>('')
 
+let ws: WebSocket | null = null
+
+interface RefreshSessionsOptions {
+  loadActiveMessages?: boolean
+}
+
+interface LoadMessagesOptions {
+  silent?: boolean
+  retryDelayMs?: number
+}
+
+const ASSISTANT_FAILURE_FALLBACK = '(The assistant failed to respond.)'
+
+function getMessageStatus(message: ChatMessageRead): MessageDeliveryStatus {
+  if (message.status) {
+    return message.status
+  }
+
+  if (message.role !== 'assistant') {
+    return 'completed'
+  }
+
+  if (!message.content.trim()) {
+    return 'pending'
+  }
+
+  if (message.content.trim() === ASSISTANT_FAILURE_FALLBACK) {
+    return 'failed'
+  }
+
+  return 'completed'
+}
+
+function normalizeMessage(message: ChatMessageRead): ChatMessageRead {
+  const status = getMessageStatus(message)
+  if (status === 'pending') {
+    return { ...message, status, content: message.content.trim() ? message.content : '…' }
+  }
+  return { ...message, status }
+}
+
+function ensureWs() {
+  const tokenNow = localStorage.getItem('ai_mentor_access_token') || ''
+  if (!tokenNow) return
+  if (ws) return
+  ws = createWebSocket(tokenNow, (data: any) => {
+    if (data?.type === 'typing') {
+      const msgId = data.message_id
+      const sid = data.session_id
+      // clear any transient load errors when we start receiving typing from server
+      clearError()
+      if (sid !== selectedSessionId.value) return
+      const idx = messages.value.findIndex((m) => m.id === msgId)
+      if (idx === -1) {
+        messages.value.push(normalizeMessage({
+          id: msgId,
+          session_id: sid,
+          role: 'assistant',
+          content: '…',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        }))
+      } else {
+        const existing = messages.value[idx]
+        if (!isFinalAssistantMessage(existing)) {
+          messages.value[idx] = normalizeMessage({ ...existing, status: 'pending' })
+        }
+      }
+      return
+    }
+
+    if (data?.type === 'new_message') {
+      const msg = data.message
+      // receiving a final message means prior load failures are now irrelevant
+      clearError()
+      if (msg && msg.session_id === selectedSessionId.value) {
+        const idx = messages.value.findIndex((m) => m.id === msg.id)
+        const normalized = normalizeMessage(msg)
+        if (idx >= 0) {
+          // replace placeholder or existing entry with final message
+          messages.value[idx] = normalized
+        } else {
+          messages.value.push(normalized)
+        }
+      }
+    }
+  })
+  // clear on close so ensureWs can reconnect later
+  ws.onopen = () => {
+    console.debug('[WS] open')
+  }
+  ws.onclose = (ev) => {
+    console.debug('[WS] closed', ev)
+    ws = null
+  }
+  ws.onerror = (ev) => {
+    console.error('[WS] error', ev)
+    // mark ws null so future ensureWs attempts can reconnect
+    ws = null
+  }
+}
+
 const activeSession = computed(
   () => sessions.value.find((session) => session.id === selectedSessionId.value) ?? null,
 )
 const sessionCount = computed(() => sessions.value.length)
 const messageCount = computed(() => messages.value.length)
 
+function isFinalAssistantMessage(m: ChatMessageRead): boolean {
+  if (m.role !== 'assistant') {
+    return false
+  }
+  const status = getMessageStatus(m)
+  return status === 'completed' || status === 'failed'
+}
+
+function normalizeMessages(msgs: ChatMessageRead[]): ChatMessageRead[] {
+  return msgs.map((m) => normalizeMessage(m))
+}
+
 function clearError() {
   error.value = ''
 }
 
-function currentUserId(): number | null {
-  return authState.user?.id ?? null
-}
-
-async function refreshSessions() {
-  const userId = currentUserId()
-  if (!userId) {
-    error.value = 'Please login first.'
-    return
-  }
+async function refreshSessions(optionsOrEvent: RefreshSessionsOptions | Event = {}) {
+  const options = optionsOrEvent instanceof Event ? {} : optionsOrEvent
+  const loadActiveMessages = options.loadActiveMessages ?? true
 
   loading.value = true
   clearError()
   try {
-    sessions.value = await listSessions(userId)
+    sessions.value = await listSessions()
 
     if (!sessions.value.length) {
       selectedSessionId.value = null
@@ -53,7 +161,9 @@ async function refreshSessions() {
       selectedSessionId.value = sessions.value[0].id
     }
 
-    await loadMessages(selectedSessionId.value)
+    if (loadActiveMessages) {
+      await loadMessages(selectedSessionId.value)
+    }
   } catch {
     error.value = 'Could not load sessions for current user.'
   } finally {
@@ -61,20 +171,32 @@ async function refreshSessions() {
   }
 }
 
-async function loadMessages(sessionId: number) {
-  const userId = currentUserId()
-  if (!userId) {
-    error.value = 'Please login first.'
-    return
-  }
+async function loadMessages(sessionId: number, options: LoadMessagesOptions = {}) {
+  const silent = options.silent ?? false
+  const retryDelayMs = options.retryDelayMs ?? 200
 
   loading.value = true
   clearError()
   try {
-    messages.value = await listMessages(sessionId, userId)
+    console.debug('[loadMessages] sessionId=', sessionId)
+    const msgs = await listMessages(sessionId)
+    messages.value = normalizeMessages(msgs)
     selectedSessionId.value = sessionId
   } catch {
-    error.value = 'Could not load messages for this session.'
+    console.error('[loadMessages] failed for', sessionId)
+    // single short retry for transient issues
+    try {
+      await new Promise((res) => setTimeout(res, retryDelayMs))
+      const retryMsgs = await listMessages(sessionId)
+      messages.value = normalizeMessages(retryMsgs)
+      selectedSessionId.value = sessionId
+      return
+    } catch (err) {
+      console.error('[loadMessages] retry failed for', sessionId, err)
+    }
+    if (!silent) {
+      error.value = 'Could not load messages for this session.'
+    }
   } finally {
     loading.value = false
   }
@@ -119,11 +241,7 @@ function cancelRenameSession() {
 }
 
 async function saveRenameSession(session: ChatSessionRead) {
-  const userId = currentUserId()
-  if (!userId) {
-    error.value = 'Please login first.'
-    return
-  }
+  // user must be logged in (authState.user) — backend uses token for identity
 
   const trimmedTitle = renameDraftTitle.value.trim()
   if (!trimmedTitle) {
@@ -139,7 +257,7 @@ async function saveRenameSession(session: ChatSessionRead) {
   clearError()
   try {
     renamingSessionId.value = session.id
-    await renameSession(session.id, userId, trimmedTitle)
+    await renameSession(session.id, trimmedTitle)
     await refreshSessions()
     cancelRenameSession()
   } catch {
@@ -163,11 +281,7 @@ function handleSessionAction(session: ChatSessionRead, action: string) {
 }
 
 async function deleteCurrentSession(sessionId: number) {
-  const userId = currentUserId()
-  if (!userId) {
-    error.value = 'Please login first.'
-    return
-  }
+  // user must be logged in (authState.user) — backend uses token for identity
 
   const session = sessions.value.find((item) => item.id === sessionId)
   if (!session) {
@@ -183,7 +297,7 @@ async function deleteCurrentSession(sessionId: number) {
   clearError()
   try {
     deletingSessionId.value = sessionId
-    await deleteSession(sessionId, userId)
+    await deleteSession(sessionId)
 
     if (selectedSessionId.value === sessionId) {
       selectedSessionId.value = null
@@ -204,17 +318,13 @@ async function submitMessage() {
     return
   }
 
-  const userId = currentUserId()
-  if (!userId) {
-    error.value = 'Please login first.'
-    return
-  }
+  // connect before sending so we won't miss early typing/new_message pushes
+  ensureWs()
 
   clearError()
   loading.value = true
   try {
     const response = await sendMessage({
-      user_id: userId,
       session_id: selectedSessionId.value ?? undefined,
       title: newSessionTitle.value.trim() || undefined,
       message: text,
@@ -222,8 +332,71 @@ async function submitMessage() {
 
     input.value = ''
     selectedSessionId.value = response.session.id
-    await refreshSessions()
-    await loadMessages(response.session.id)
+    // refresh sessions list without triggering a second immediate messages fetch
+    await refreshSessions({ loadActiveMessages: false })
+    // initial post-send fetch is best-effort and should not flash an error banner
+    await loadMessages(response.session.id, { silent: true })
+
+    // ensure websocket connected to receive assistant reply in real time
+    ensureWs()
+
+    // if assistant message is not present yet, prefer WS push; fall back to polling
+    if (!response.assistant_message) {
+      // if ws is connected, wait briefly for the push (avoid duplicate polling)
+      if (ws) {
+        const waitStart = Date.now()
+        const waitMs = 10_000 // wait up to 10s for websocket push
+        while (Date.now() - waitStart < waitMs) {
+          await new Promise((res) => setTimeout(res, 500))
+          if (messages.value.some((m) => isFinalAssistantMessage(m))) {
+            break
+          }
+        }
+
+        // if we already received assistant via WS, skip polling
+        if (messages.value.some((m) => isFinalAssistantMessage(m))) {
+          // done
+        } else {
+          // fallback to polling for the rest of the timeout window
+          const start = Date.now()
+          const timeoutMs = 60_000
+          const pollInterval = 1000
+
+          while (Date.now() - start < timeoutMs) {
+            await new Promise((res) => setTimeout(res, pollInterval))
+            try {
+              const msgs = await listMessages(response.session.id)
+              messages.value = normalizeMessages(msgs)
+              if (messages.value.some((m) => isFinalAssistantMessage(m))) {
+                break
+              }
+            } catch {
+              // ignore and retry until timeout
+            }
+          }
+        }
+      } else {
+        // no ws available: poll as before
+        const start = Date.now()
+        const timeoutMs = 60_000 // match backend behavior / client timeout
+        const pollInterval = 1000
+
+        while (Date.now() - start < timeoutMs) {
+          await new Promise((res) => setTimeout(res, pollInterval))
+          try {
+            const msgs = await listMessages(response.session.id)
+            messages.value = normalizeMessages(msgs)
+            // count final assistant message only (pending placeholders do not count)
+            const hasAssistant = messages.value.some((m) => isFinalAssistantMessage(m))
+            if (hasAssistant) {
+              break
+            }
+          } catch {
+            // ignore and retry until timeout
+          }
+        }
+      }
+    }
   } catch {
     error.value = 'Could not send message.'
   } finally {
@@ -236,6 +409,8 @@ onMounted(async () => {
     await refreshCurrentUser()
   }
   await refreshSessions()
+  // ensure websocket connects after we refresh user/session info
+  ensureWs()
 })
 </script>
 
@@ -392,6 +567,8 @@ onMounted(async () => {
             ]"
           >
             <strong>{{ message.role === 'user' ? 'You' : 'AI Mentor' }}</strong>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">Generating...</small>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">Generation failed</small>
             <p>{{ message.content }}</p>
           </div>
 
@@ -422,6 +599,11 @@ onMounted(async () => {
 .messages {
   display: grid;
   gap: 0.75rem;
+}
+
+.message-bubble small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 .session-card {

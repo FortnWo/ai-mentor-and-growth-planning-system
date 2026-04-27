@@ -1,6 +1,7 @@
 import apiClient from './client'
 
 export type MessageRole = 'user' | 'assistant'
+export type MessageDeliveryStatus = 'pending' | 'completed' | 'failed'
 
 export interface ChatSessionRead {
   id: number
@@ -18,11 +19,11 @@ export interface ChatMessageRead {
   session_id: number
   role: MessageRole
   content: string
+  status?: MessageDeliveryStatus
   created_at: string
 }
 
 export interface SendMessagePayload {
-  user_id: number
   message: string
   session_id?: number
   title?: string
@@ -31,48 +32,18 @@ export interface SendMessagePayload {
 export interface SendMessageResponse {
   session: ChatSessionRead
   user_message: ChatMessageRead
-  assistant_message: ChatMessageRead
+  assistant_message?: ChatMessageRead | null
 }
 
 export const sendMessage = (payload: SendMessagePayload): Promise<SendMessageResponse> =>
   apiClient.post<SendMessageResponse>('/chat', payload).then((response) => response.data)
 
-export const listSessions = (userId: number): Promise<ChatSessionRead[]> =>
-  apiClient
-    .get<ChatSessionRead[]>('/chat/sessions', {
-      params: {
-        user_id: userId,
-      },
-    })
-    .then((response) => response.data)
+export const listSessions = (): Promise<ChatSessionRead[]> => apiClient.get<ChatSessionRead[]>('/chat/sessions').then((response) => response.data)
 
-export const listMessages = (sessionId: number, userId?: number): Promise<ChatMessageRead[]> =>
-  apiClient
-    .get<ChatMessageRead[]>(`/chat/${sessionId}/messages`, {
-      params: {
-        user_id: userId,
-      },
-    })
-    .then((response) => response.data)
+export const listMessages = (sessionId: number): Promise<ChatMessageRead[]> =>
+  apiClient.get<ChatMessageRead[]>(`/chat/${sessionId}/messages`).then((response) => response.data)
 
-export const deleteSession = (sessionId: number, userId: number): Promise<void> =>
-  apiClient
-    .delete(`/chat/${sessionId}`, {
-      params: {
-        user_id: userId,
-      },
-    })
-    .then(() => undefined)
+export const deleteSession = (sessionId: number): Promise<void> => apiClient.delete(`/chat/${sessionId}`).then(() => undefined)
 
-export const renameSession = (sessionId: number, userId: number, title: string): Promise<ChatSessionRead> =>
-  apiClient
-    .patch<ChatSessionRead>(
-      `/chat/${sessionId}`,
-      { title } satisfies RenameSessionPayload,
-      {
-        params: {
-          user_id: userId,
-        },
-      },
-    )
-    .then((response) => response.data)
+export const renameSession = (sessionId: number, title: string): Promise<ChatSessionRead> =>
+  apiClient.patch<ChatSessionRead>(`/chat/${sessionId}`, { title } satisfies RenameSessionPayload).then((response) => response.data)

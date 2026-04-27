@@ -9,6 +9,12 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
 
 
+class MessageDeliveryStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ChatSessionBase(BaseModel):
     title: str | None = Field(default=None, max_length=255)
 
@@ -52,6 +58,9 @@ class ChatMessageUpdate(BaseModel):
 
 
 class ChatMessageRead(ChatMessageBase):
+    # Assistant placeholder messages can be temporarily empty while background generation is in progress.
+    content: str = Field(default="")
+    status: MessageDeliveryStatus = Field(default=MessageDeliveryStatus.COMPLETED)
     id: int
     session_id: int
     created_at: datetime
@@ -60,7 +69,6 @@ class ChatMessageRead(ChatMessageBase):
 
 
 class ChatSendRequest(BaseModel):
-    user_id: int = Field(gt=0)
     message: str = Field(min_length=1)
     session_id: int | None = Field(default=None, gt=0)
     title: str | None = Field(default=None, max_length=255)
@@ -69,7 +77,7 @@ class ChatSendRequest(BaseModel):
 class ChatSendResponse(BaseModel):
     session: ChatSessionRead
     user_message: ChatMessageRead
-    assistant_message: ChatMessageRead
+    assistant_message: ChatMessageRead | None = None
 
 
 class ChatDeleteResponse(BaseModel):

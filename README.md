@@ -22,6 +22,10 @@ A full-stack mentoring platform for university students and admins, with role-ba
 	- limited permission keys and optional expiry.
 - Profile self-service APIs for current user (`/profile/me`).
 - AI chat sessions and message history.
+- Non-blocking chat flow: user message is persisted immediately, assistant reply is generated in background.
+- Real-time assistant updates via WebSocket (`/ws`) with polling fallback.
+- Explicit assistant message status semantics: `pending`, `completed`, `failed`.
+- Backend 5xx error logging to `backend/logs/error.log`.
 
 ## Quick Start
 
@@ -97,6 +101,7 @@ Important backend variables in `backend/.env`:
 Frontend variable:
 
 - `VITE_API_BASE_URL`: backend base URL, default `http://localhost:8000`.
+- `VITE_WS_BASE`: optional explicit WebSocket base URL (for dev/proxy customization).
 
 ## API Overview
 
@@ -115,9 +120,20 @@ Frontend variable:
 | GET | `/profile/me` | Get my profile |
 | PUT | `/profile/me` | Update my profile |
 | PATCH | `/profile/me/password` | Change my password |
-| POST | `/chat` | Send message and get AI response |
-| GET | `/chat/sessions?user_id=<id>` | List chat sessions for user |
-| GET | `/chat/{session_id}/messages?user_id=<id>` | List messages in session |
+| POST | `/chat` | Send message; returns session + user message immediately, assistant reply is asynchronous |
+| GET | `/chat/sessions` | List chat sessions for current authenticated user |
+| GET | `/chat/{session_id}/messages` | List messages in session for current authenticated user |
+
+### WebSocket
+
+| Protocol | Path | Description |
+| --- | --- | --- |
+| WS | `/ws?token=<jwt>` | Real-time push for typing/new assistant messages |
+
+Typical push event payloads:
+
+- `typing`: `{ "type": "typing", "session_id": number, "message_id": number, "status": "pending" }`
+- `new_message`: `{ "type": "new_message", "message": { "id": number, "session_id": number, "role": "assistant", "content": string, "status": "completed|failed", "created_at": string } }`
 
 ### Admin Only
 
