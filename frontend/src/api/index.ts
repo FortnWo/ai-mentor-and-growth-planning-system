@@ -10,5 +10,6 @@ export const ping = (): Promise<PingResponse> =>
 
 export * from './auth'
 export * from './chat'
+export * from './extendedProfile'
 export * from './profile'
 export * from './user'

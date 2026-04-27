@@ -20,6 +20,10 @@ const workspaceTitle = computed(() => {
     return 'Conversation studio'
   }
 
+  if (route.path === '/profile/extended') {
+    return 'Extended profile lab'
+  }
+
   if (route.path === '/profile') {
     return 'Identity workspace'
   }
@@ -37,6 +41,10 @@ const workspaceTitle = computed(() => {
 const workspaceSubtitle = computed(() => {
   if (route.path === '/chat') {
     return 'Track sessions, compare context, and keep the discussion flow visually calm.'
+  }
+
+  if (route.path === '/profile/extended') {
+    return 'Capture interests, skills, habits, and goals with manual edits plus chat-driven extraction.'
   }
 
   if (route.path === '/profile') {
@@ -61,6 +69,7 @@ const navigationItems = computed(() => {
   return [
     { to: '/chat', label: 'Chat' },
     { to: '/profile', label: 'Profile' },
+    { to: '/profile/extended', label: 'Extended Profile' },
     { to: '/plan', label: 'Growth Plan' },
     ...(admin.value ? [{ to: '/admin/users', label: 'Admin Users' }] : []),
   ]
@@ -106,11 +115,8 @@ async function logout() {
 
 <template>
   <div class="app-shell">
-    <div
-      class="pointer-glow"
-      :class="{ 'is-visible': glowVisible }"
-      :style="{ '--glow-x': `${glowX}px`, '--glow-y': `${glowY}px` }"
-    ></div>
+    <div class="pointer-glow" :class="{ 'is-visible': glowVisible }"
+      :style="{ '--glow-x': `${glowX}px`, '--glow-y': `${glowY}px` }"></div>
 
     <div class="ambient-orb"></div>
 
@@ -131,13 +137,8 @@ async function logout() {
       </div>
 
       <nav class="desktop-nav" :class="{ 'desktop-nav--guest': !authenticated }">
-        <RouterLink
-          v-for="item in navigationItems"
-          :key="item.to"
-          :to="item.to"
-          class="nav-link"
-          @click="closeMobileMenu"
-        >
+        <RouterLink v-for="item in navigationItems" :key="item.to" :to="item.to" class="nav-link"
+          @click="closeMobileMenu">
           {{ item.label }}
         </RouterLink>
 
@@ -147,7 +148,8 @@ async function logout() {
       </nav>
 
       <div class="header-actions">
-        <RouterLink v-if="!authenticated" class="button button--primary login-button" to="/login" @click="closeMobileMenu">
+        <RouterLink v-if="!authenticated" class="button button--primary login-button" to="/login"
+          @click="closeMobileMenu">
           Login
         </RouterLink>
 
@@ -167,13 +169,8 @@ async function logout() {
           </button>
         </div>
 
-        <RouterLink
-          v-for="item in navigationItems"
-          :key="item.to"
-          :to="item.to"
-          class="mobile-link"
-          @click="closeMobileMenu"
-        >
+        <RouterLink v-for="item in navigationItems" :key="item.to" :to="item.to" class="mobile-link"
+          @click="closeMobileMenu">
           {{ item.label }}
         </RouterLink>
 

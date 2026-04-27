@@ -35,6 +35,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/profile/extended',
+    name: 'ExtendedProfile',
+    component: () => import('../views/ExtendedProfileView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('../views/AdminUsersView.vue'),

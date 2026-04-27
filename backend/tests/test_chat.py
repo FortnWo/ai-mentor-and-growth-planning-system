@@ -278,6 +278,35 @@ def test_extract_response_text_from_responses_api_output():
     assert text == "Hello from the model."
 
 
+def test_send_message_succeeds_when_profile_extraction_fails(client, monkeypatch):
+    create_user(client, 41)
+    token = login_user(client, 41)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Chat still succeeds")
+
+    def _raise_extraction_failure(message: str):
+        raise RuntimeError("profile extraction failed")
+
+    monkeypatch.setattr(chat_service, "build_profile_extraction_response", _raise_extraction_failure)
+
+    response = client.post(
+        "/chat",
+        json={"message": "Test chat behavior when extraction fails."},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    session_id = response.json()["session"]["id"]
+    messages_response = client.get(f"/chat/{session_id}/messages", headers=headers)
+    assert messages_response.status_code == 200
+    messages = messages_response.json()
+
+    assistant_messages = [message for message in messages if message["role"] == "assistant"]
+    assert assistant_messages
+    assert assistant_messages[0]["content"] == "Chat still succeeds"
+
+
 @pytest.mark.skipif(
     not settings.LLM_API_KEY or not settings.RUN_LIVE_AI_TESTS,
     reason="Live AI test requires LLM_API_KEY and RUN_LIVE_AI_TESTS=1",

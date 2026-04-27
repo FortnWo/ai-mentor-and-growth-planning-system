@@ -1,16 +1,18 @@
+import logging
 from openai import OpenAI
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.schemas.chat import ChatMessageRead, ChatSendRequest, MessageDeliveryStatus
+from app.services import extended_profile_service
 
 import asyncio
 import threading
 
 
 ASSISTANT_FAILURE_MESSAGE = "(The assistant failed to respond.)"
+logger = logging.getLogger(__name__)
 
 
 def _get_ai_client() -> OpenAI:
@@ -196,6 +198,25 @@ def build_ai_response(message: str, *, instructions: str | None = None) -> str:
     return _extract_response_text(response)
 
 
+def build_profile_extraction_response(message: str) -> str:
+    try:
+        client = _get_ai_client()
+        if not settings.LLM_MODEL:
+            raise RuntimeError("LLM_MODEL is not configured")
+
+        response = client.responses.create(
+            model=settings.LLM_MODEL,
+            instructions=settings.PROFILE_EXTRACTION_SYSTEM_PROMPT,
+            input=message.strip(),
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"AI profile extraction request failed: {exc}") from exc
+
+    return _extract_response_text(response)
+
+
 def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tuple[ChatSession, ChatMessage, ChatMessage]:
     session = get_or_create_session(
         db,
@@ -348,5 +369,44 @@ def process_message_in_background(session_id: int, message: str) -> None:
                 loop.call_soon_threadsafe(asyncio.create_task, manager.send_personal_message(owner_id, payload))
         except Exception:
             pass
+
+        try:
+            _refresh_profile_from_session_history(db, session_id=session_id, user_id=owner_id)
+        except Exception as exc:
+            logger.warning(
+                "Profile extraction failed for session_id=%s user_id=%s error=%s",
+                session_id,
+                owner_id,
+                exc,
+            )
     finally:
         db.close()
+
+
+def _refresh_profile_from_session_history(db: Session, *, session_id: int, user_id: int | None) -> None:
+    if not settings.PROFILE_EXTRACTION_ENABLED:
+        return
+
+    profile_user_id = user_id
+    if profile_user_id is None:
+        session_obj = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session_obj:
+            return
+        profile_user_id = session_obj.user_id
+
+    messages = extended_profile_service.list_recent_messages_for_session(
+        db,
+        session_id=session_id,
+        limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
+    )
+    extraction_input = extended_profile_service.build_extraction_input(messages)
+    if not extraction_input:
+        return
+
+    raw_result = build_profile_extraction_response(extraction_input)
+    extraction_result = extended_profile_service.parse_extraction_result(raw_result)
+    extended_profile_service.apply_extraction_result_for_user(
+        db,
+        user_id=profile_user_id,
+        result=extraction_result,
+    )

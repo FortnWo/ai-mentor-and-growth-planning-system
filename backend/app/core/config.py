@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     LLM_API_BASE_URL: str | None = None
     LLM_MODEL: str | None = None
     LLM_SYSTEM_PROMPT: str | None = None
+    PROFILE_EXTRACTION_ENABLED: bool = True
+    PROFILE_EXTRACTION_MESSAGE_WINDOW: int = 14
+    PROFILE_EXTRACTION_SYSTEM_PROMPT: str = (
+        "You are a profile extraction assistant. "
+        "Extract user profile signals from the dialogue and return strict JSON only. "
+        "Use keys: interests, skills, goals, study_habits, personality, preferences. "
+        "Each key must map to an array of short strings. "
+        "If unknown, return an empty array for that key. "
+        "Do not include markdown or extra commentary."
+    )
     RUN_LIVE_AI_TESTS: bool = False
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
