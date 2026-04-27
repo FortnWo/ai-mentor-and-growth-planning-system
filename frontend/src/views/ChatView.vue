@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import CompactActionMenu from '../components/CompactActionMenu.vue'
+import CompactActionMenu from '../components/CompactActionMenu'
 import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
 import { createWebSocket } from '../utils/ws'
 import type { ChatMessageRead, ChatSessionRead, MessageDeliveryStatus } from '../api/chat'
@@ -474,12 +474,7 @@ onMounted(async () => {
 
         <div class="field">
           <label class="label" for="session-title">New Session Title (optional)</label>
-          <input
-            id="session-title"
-            v-model="newSessionTitle"
-            class="input"
-            placeholder="e.g. Midterm recovery plan"
-          />
+          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="e.g. Midterm recovery plan" />
         </div>
 
         <div class="button-row">
@@ -492,11 +487,8 @@ onMounted(async () => {
         </div>
 
         <div class="session-list">
-          <div
-            v-for="session in sessions"
-            :key="session.id"
-            :class="['session-card', { active: session.id === selectedSessionId, 'session-card--editing': renamingSessionId === session.id }]"
-          >
+          <div v-for="session in sessions" :key="session.id"
+            :class="['session-card', { active: session.id === selectedSessionId, 'session-card--editing': renamingSessionId === session.id }]">
             <template v-if="renamingSessionId === session.id">
               <div class="session-card__editor">
                 <div class="session-card__editor-copy">
@@ -504,18 +496,13 @@ onMounted(async () => {
                   <small>{{ new Date(session.created_at).toLocaleString() }}</small>
                 </div>
 
-                <input
-                  v-model="renameDraftTitle"
-                  class="input session-card__input"
-                  placeholder="Enter a session title"
-                  :disabled="loading"
-                  type="text"
-                  @keydown.enter.prevent="saveRenameSession(session)"
-                  @keydown.esc.prevent="cancelRenameSession"
-                />
+                <input v-model="renameDraftTitle" class="input session-card__input" placeholder="Enter a session title"
+                  :disabled="loading" type="text" @keydown.enter.prevent="saveRenameSession(session)"
+                  @keydown.esc.prevent="cancelRenameSession" />
 
                 <div class="session-card__editor-actions">
-                  <button class="button button--primary" :disabled="loading" type="button" @click="saveRenameSession(session)">
+                  <button class="button button--primary" :disabled="loading" type="button"
+                    @click="saveRenameSession(session)">
                     Save
                   </button>
                   <button class="button button--ghost" :disabled="loading" type="button" @click="cancelRenameSession">
@@ -532,11 +519,8 @@ onMounted(async () => {
               </button>
 
               <div class="session-card__actions">
-                <CompactActionMenu
-                  :aria-label="`Open actions for ${session.title || `Session #${session.id}`}`"
-                  :items="getSessionActionItems(session)"
-                  @select="handleSessionAction(session, $event)"
-                />
+                <CompactActionMenu :aria-label="`Open actions for ${session.title || `Session #${session.id}`}`"
+                  :items="getSessionActionItems(session)" @select="handleSessionAction(session, $event)" />
               </div>
             </template>
           </div>
@@ -558,17 +542,14 @@ onMounted(async () => {
         <div class="divider"></div>
 
         <div class="messages">
-          <div
-            v-for="message in messages"
-            :key="message.id"
-            :class="[
-              'message-bubble',
-              message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
-            ]"
-          >
+          <div v-for="message in messages" :key="message.id" :class="[
+            'message-bubble',
+            message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
+          ]">
             <strong>{{ message.role === 'user' ? 'You' : 'AI Mentor' }}</strong>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">Generating...</small>
-            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">Generation failed</small>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">Generation
+              failed</small>
             <p>{{ message.content }}</p>
           </div>
 
