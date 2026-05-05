@@ -217,6 +217,30 @@ def build_profile_extraction_response(message: str) -> str:
     return _extract_response_text(response)
 
 
+def build_goal_breakdown_response(message: str) -> str:
+    """
+    Build AI response for goal breakdown.
+    Input: structured prompt containing user goal and optional context.
+    Output: raw AI response text containing JSON breakdown structure.
+    """
+    try:
+        client = _get_ai_client()
+        if not settings.LLM_MODEL:
+            raise RuntimeError("LLM_MODEL is not configured")
+
+        response = client.responses.create(
+            model=settings.LLM_MODEL,
+            instructions=settings.GOAL_BREAKDOWN_SYSTEM_PROMPT,
+            input=message.strip(),
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"AI goal breakdown request failed: {exc}") from exc
+
+    return _extract_response_text(response)
+
+
 def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tuple[ChatSession, ChatMessage, ChatMessage]:
     session = get_or_create_session(
         db,

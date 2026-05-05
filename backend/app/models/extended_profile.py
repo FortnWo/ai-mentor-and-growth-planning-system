@@ -1,16 +1,26 @@
 import json
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
 
+UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
+
+
 class UserExtendedProfile(Base):
     __tablename__ = "user_extended_profiles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    id = Column(UnsignedInt, primary_key=True, index=True)
+    user_id = Column(
+        UnsignedInt,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
     _interests_json = Column("interests", Text, nullable=True)
     _skills_json = Column("skills", Text, nullable=True)

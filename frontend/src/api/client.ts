@@ -23,6 +23,13 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('ai_mentor_access_token')
+      localStorage.removeItem('ai_mentor_user')
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
+    }
     console.error('[API Error]', error.response?.data ?? error.message)
     return Promise.reject(error)
   },

@@ -25,6 +25,17 @@ class Settings(BaseSettings):
         "If unknown, return an empty array for that key. "
         "Do not include markdown or extra commentary."
     )
+    GOAL_BREAKDOWN_ENABLED: bool = True
+    GOAL_BREAKDOWN_MESSAGE_WINDOW: int = 5
+    GOAL_BREAKDOWN_SYSTEM_PROMPT: str = (
+        "You are a goal breakdown assistant. "
+        "Given a user goal and optional context, generate a structured breakdown as strict JSON only. "
+        "Return JSON with 'breakdowns' key containing an array of breakdown nodes. "
+        "Each node must have: title (string), description (string or null), children (array of nodes). "
+        "Nodes can be nested recursively. "
+        "If unknown, return empty 'breakdowns' array. "
+        "Do not include markdown or extra commentary."
+    )
     RUN_LIVE_AI_TESTS: bool = False
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"

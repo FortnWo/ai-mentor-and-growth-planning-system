@@ -2,6 +2,7 @@ import json
 from enum import Enum
 
 from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text, func, text
+from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -17,10 +18,13 @@ class AdminPermissionLevel(str, Enum):
     LIMITED = "limited"
 
 
+UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
+
+
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UnsignedInt, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
@@ -62,6 +66,12 @@ class User(Base):
         "UserExtendedProfile",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    goals = relationship(
+        "Goal",
+        back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

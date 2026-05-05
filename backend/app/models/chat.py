@@ -1,6 +1,7 @@
 from enum import Enum
 
 from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -11,11 +12,14 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
 
 
+UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(UnsignedInt, primary_key=True, index=True)
+    user_id = Column(UnsignedInt, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
@@ -31,8 +35,8 @@ class ChatSession(Base):
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    id = Column(UnsignedInt, primary_key=True, index=True)
+    session_id = Column(UnsignedInt, ForeignKey("chat_sessions.id"), nullable=False, index=True)
     role = Column(
         SQLEnum(
             MessageRole,

@@ -74,3 +74,44 @@ CREATE TABLE IF NOT EXISTS user_extended_profiles (
     CONSTRAINT fk_extended_profiles_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     INDEX idx_extended_profiles_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- -------------------------------------------------------
+-- Goals
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS goals (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id         INT UNSIGNED NOT NULL,
+    title           VARCHAR(255) NOT NULL,
+    description     TEXT NULL,
+    status          ENUM('active', 'completed', 'archived') NOT NULL DEFAULT 'active',
+    priority        ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
+    target_date     DATE NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_goals_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_goals_user (user_id),
+    INDEX idx_goals_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- Goal breakdowns (tree structure)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS goal_breakdowns (
+    id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    goal_id         INT UNSIGNED NOT NULL,
+    parent_id       INT UNSIGNED NULL,
+    title           VARCHAR(255) NOT NULL,
+    description     TEXT NULL,
+    level           TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    sequence        SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    status          ENUM('pending', 'in_progress', 'completed') NOT NULL DEFAULT 'pending',
+    due_date        DATE NULL,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_breakdowns_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
+    CONSTRAINT fk_breakdowns_parent FOREIGN KEY (parent_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
+    INDEX idx_breakdowns_goal (goal_id),
+    INDEX idx_breakdowns_parent (parent_id),
+    INDEX idx_breakdowns_level (level)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
