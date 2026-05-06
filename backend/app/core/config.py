@@ -36,6 +36,19 @@ class Settings(BaseSettings):
         "If unknown, return empty 'breakdowns' array. "
         "Do not include markdown or extra commentary."
     )
+    ACTION_PLAN_ENABLED: bool = True
+    ACTION_PLAN_CONTEXT_MESSAGE_WINDOW: int = 8
+    ACTION_PLAN_SYSTEM_PROMPT: str = (
+        "You are an action plan assistant. "
+        "Given a user goal, its breakdown tree, and optional profile context, generate a practical action plan as strict JSON only. "
+        "Return JSON with keys: plan and items. "
+        "plan must contain title and summary. "
+        "items must be an array of objects with: title, description, frequency, schedule, status, start_date, due_date, sequence, breakdown_ref. "
+        "Use status values pending, in_progress, completed, or archived. "
+        "Use frequency values once, daily, weekly, monthly, or custom. "
+        "If unknown, use empty strings or nulls, and keep items as an empty array when no plan can be formed. "
+        "Do not include markdown, code fences, or extra commentary."
+    )
     RUN_LIVE_AI_TESTS: bool = False
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"

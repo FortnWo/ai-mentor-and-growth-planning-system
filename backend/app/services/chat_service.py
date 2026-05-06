@@ -241,6 +241,30 @@ def build_goal_breakdown_response(message: str) -> str:
     return _extract_response_text(response)
 
 
+def build_action_plan_response(message: str) -> str:
+    """
+    Build AI response for action plan generation.
+    Input: structured prompt containing goal, breakdowns, and optional profile context.
+    Output: raw AI response text containing strict JSON action plan structure.
+    """
+    try:
+        client = _get_ai_client()
+        if not settings.LLM_MODEL:
+            raise RuntimeError("LLM_MODEL is not configured")
+
+        response = client.responses.create(
+            model=settings.LLM_MODEL,
+            instructions=settings.ACTION_PLAN_SYSTEM_PROMPT,
+            input=message.strip(),
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"AI action plan request failed: {exc}") from exc
+
+    return _extract_response_text(response)
+
+
 def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tuple[ChatSession, ChatMessage, ChatMessage]:
     session = get_or_create_session(
         db,

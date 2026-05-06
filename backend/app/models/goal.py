@@ -61,6 +61,7 @@ class Goal(Base):
 
     user = relationship("User", back_populates="goals")
     breakdowns = relationship("GoalBreakdown", back_populates="goal", cascade="all, delete-orphan")
+    action_plan = relationship("ActionPlan", back_populates="goal", uselist=False, cascade="all, delete-orphan")
 
 
 class GoalBreakdown(Base):

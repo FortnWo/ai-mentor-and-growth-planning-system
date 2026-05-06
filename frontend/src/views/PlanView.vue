@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { createGoal, listGoals, getGoalDetail, refreshGoalBreakdown, deleteGoal, type Goal, type GoalDetail } from '../api/goals'
+import { createActionPlan, getActionPlanDetail, listActionPlans, refreshActionPlan, deleteActionPlan, type ActionPlan, type ActionPlanDetail, type ActionPlanItem } from '../api/actionPlans'
 import BreakdownNode from '../components/BreakdownNode.vue'
 
 // State
 const goals = ref<Goal[]>([])
 const selectedGoal = ref<GoalDetail | null>(null)
+const actionPlans = ref<ActionPlan[]>([])
+const selectedActionPlan = ref<ActionPlanDetail | null>(null)
 const showCreateForm = ref(false)
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const isPollingBreakdown = ref(false)
+const isActionPlanFetching = ref(false)
+const isActionPlanBusy = ref(false)
 const pollingGoalId = ref<number | null>(null)
 const errorMessage = ref('')
 
@@ -32,6 +37,14 @@ const loadGoals = async () => {
     console.error(error)
   } finally {
     isLoading.value = false
+  }
+}
+
+const loadActionPlans = async () => {
+  try {
+    actionPlans.value = await listActionPlans()
+  } catch (error) {
+    console.error(error)
   }
 }
 
@@ -72,12 +85,93 @@ const selectGoal = async (goal: Goal) => {
     if (!detail.breakdowns?.root_nodes?.length) {
       void pollGoalBreakdown(goal.id)
     }
+    await loadActionPlanForGoal(goal.id)
     errorMessage.value = ''
   } catch (error) {
     errorMessage.value = 'Failed to load goal details'
     console.error(error)
   } finally {
     isLoading.value = false
+  }
+}
+
+const upsertActionPlanSummary = (detail: ActionPlanDetail) => {
+  const summary: ActionPlan = {
+    id: detail.id,
+    goal_id: detail.goal_id,
+    title: detail.title,
+    summary: detail.summary,
+    status: detail.status,
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+  }
+
+  const existingIndex = actionPlans.value.findIndex((plan) => plan.id === summary.id)
+  if (existingIndex >= 0) {
+    actionPlans.value.splice(existingIndex, 1, summary)
+    return
+  }
+
+  const goalIndex = actionPlans.value.findIndex((plan) => plan.goal_id === summary.goal_id)
+  if (goalIndex >= 0) {
+    actionPlans.value.splice(goalIndex, 1, summary)
+    return
+  }
+
+  actionPlans.value.unshift(summary)
+}
+
+const loadActionPlanForGoal = async (goalId: number) => {
+  const summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
+  if (!summary) {
+    selectedActionPlan.value = null
+    return
+  }
+
+  try {
+    isActionPlanFetching.value = true
+    selectedActionPlan.value = await getActionPlanDetail(summary.id)
+    errorMessage.value = ''
+  } catch (error) {
+    selectedActionPlan.value = null
+    errorMessage.value = 'Failed to load action plan details'
+    console.error(error)
+  } finally {
+    isActionPlanFetching.value = false
+  }
+}
+
+const handleGenerateActionPlan = async () => {
+  if (!selectedGoal.value) return
+
+  try {
+    isActionPlanBusy.value = true
+    const detail = await createActionPlan({ goal_id: selectedGoal.value.id })
+    selectedActionPlan.value = detail
+    upsertActionPlanSummary(detail)
+    errorMessage.value = ''
+  } catch (error) {
+    errorMessage.value = 'Failed to generate action plan'
+    console.error(error)
+  } finally {
+    isActionPlanBusy.value = false
+  }
+}
+
+const handleRefreshActionPlan = async () => {
+  if (!selectedActionPlan.value) return
+
+  try {
+    isActionPlanBusy.value = true
+    const detail = await refreshActionPlan(selectedActionPlan.value.id)
+    selectedActionPlan.value = detail
+    upsertActionPlanSummary(detail)
+    errorMessage.value = ''
+  } catch (error) {
+    errorMessage.value = 'Failed to refresh action plan'
+    console.error(error)
+  } finally {
+    isActionPlanBusy.value = false
   }
 }
 
@@ -135,12 +229,28 @@ const handleDeleteGoal = async (goalId: number) => {
   try {
     await deleteGoal(goalId)
     goals.value = goals.value.filter(g => g.id !== goalId)
+    actionPlans.value = actionPlans.value.filter((plan) => plan.goal_id !== goalId)
     if (selectedGoal.value?.id === goalId) {
       selectedGoal.value = null
+      selectedActionPlan.value = null
     }
     errorMessage.value = ''
   } catch (error) {
     errorMessage.value = 'Failed to delete goal'
+    console.error(error)
+  }
+}
+
+const handleDeleteActionPlan = async () => {
+  if (!selectedActionPlan.value) return
+
+  try {
+    await deleteActionPlan(selectedActionPlan.value.id)
+    actionPlans.value = actionPlans.value.filter((plan) => plan.id !== selectedActionPlan.value?.id)
+    selectedActionPlan.value = null
+    errorMessage.value = ''
+  } catch (error) {
+    errorMessage.value = 'Failed to delete action plan'
     console.error(error)
   }
 }
@@ -154,10 +264,12 @@ const formatDate = (dateStr: string | null) => {
 // Computed
 const hasGoals = computed(() => goals.value.length > 0)
 const breakdownNodes = computed(() => selectedGoal.value?.breakdowns.root_nodes || [])
+const actionPlanItems = computed<ActionPlanItem[]>(() => selectedActionPlan.value?.items || [])
+const hasActionPlan = computed(() => Boolean(selectedActionPlan.value))
 
 // Lifecycle
 onMounted(() => {
-  loadGoals()
+  void Promise.all([loadGoals(), loadActionPlans()])
 })
 </script>
 
@@ -274,12 +386,74 @@ onMounted(() => {
 
         <!-- Breakdown Tree -->
         <div class="breakdown-section">
-          <h3 class="breakdown-title">Action Plan</h3>
+          <h3 class="breakdown-title">Goal Breakdown</h3>
           <div v-if="breakdownNodes.length > 0" class="breakdown-tree">
             <BreakdownNode v-for="node in breakdownNodes" :key="node.id" :node="node" />
           </div>
           <p v-else class="placeholder">
             AI is generating your action plan. Please refresh in a moment.
+          </p>
+        </div>
+
+        <!-- Action Plan -->
+        <div class="action-plan-section">
+          <div class="section-row">
+            <h3 class="breakdown-title">Action Plan</h3>
+            <div class="detail-actions">
+              <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
+                @click="hasActionPlan ? handleRefreshActionPlan() : handleGenerateActionPlan()"
+                :disabled="isActionPlanBusy || isActionPlanFetching">
+                {{ isActionPlanBusy ? 'Processing...' : hasActionPlan ? '🔄 Refresh Plan' : '✨ Generate Plan' }}
+              </button>
+              <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
+                :disabled="isActionPlanBusy">
+                🗑️ Remove Plan
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isActionPlanFetching" class="placeholder">
+            Loading action plan...
+          </div>
+          <div v-else-if="selectedActionPlan" class="action-plan-card">
+            <div class="action-plan-card__header">
+              <div>
+                <h4>{{ selectedActionPlan.title }}</h4>
+                <p v-if="selectedActionPlan.summary" class="action-plan-summary">
+                  {{ selectedActionPlan.summary }}
+                </p>
+              </div>
+              <span class="status-badge">{{ selectedActionPlan.status }}</span>
+            </div>
+
+            <div v-if="actionPlanItems.length > 0" class="action-plan-list">
+              <article v-for="item in actionPlanItems" :key="item.id" class="action-plan-item">
+                <div class="action-plan-item__top">
+                  <div>
+                    <h5>{{ item.title }}</h5>
+                    <p v-if="item.description" class="action-plan-item__desc">
+                      {{ item.description }}
+                    </p>
+                  </div>
+                  <span class="badge badge--muted">{{ item.frequency }}</span>
+                </div>
+
+                <div class="action-plan-item__meta">
+                  <span>Status: <strong>{{ item.status }}</strong></span>
+                  <span v-if="item.start_date">Start: <strong>{{ formatDate(item.start_date) }}</strong></span>
+                  <span v-if="item.due_date">Due: <strong>{{ formatDate(item.due_date) }}</strong></span>
+                  <span v-if="item.schedule">Schedule: <strong>{{ item.schedule }}</strong></span>
+                  <span v-if="item.breakdown_id">Breakdown ID: <strong>#{{ item.breakdown_id }}</strong></span>
+                </div>
+              </article>
+            </div>
+
+            <p v-else class="placeholder action-plan-empty">
+              This plan is valid, but AI returned no items. Refresh to regenerate.
+            </p>
+          </div>
+          <p v-else class="placeholder">
+            Select a goal and generate an action plan to see a structured execution list here.
           </p>
         </div>
       </section>
@@ -619,10 +793,101 @@ onMounted(() => {
   margin-top: 1.5rem;
 }
 
+.action-plan-section {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .breakdown-title {
   font-size: 1.1rem;
   color: var(--heading);
   margin: 0 0 1rem 0;
+}
+
+.action-plan-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+}
+
+.action-plan-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.action-plan-card__header h4 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1.1rem;
+  color: var(--heading);
+}
+
+.action-plan-summary {
+  margin: 0;
+  color: var(--secondary-text);
+  line-height: 1.5;
+}
+
+.action-plan-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.action-plan-item {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.action-plan-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.action-plan-item__top h5 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: var(--heading);
+}
+
+.action-plan-item__desc {
+  margin: 0;
+  color: var(--secondary-text);
+  line-height: 1.5;
+}
+
+.action-plan-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  color: var(--secondary-text);
+}
+
+.badge--muted {
+  background: var(--surface-3);
+  color: var(--secondary-text);
+}
+
+.action-plan-empty {
+  padding-top: 1rem;
 }
 
 .breakdown-tree {
@@ -716,6 +981,11 @@ onMounted(() => {
     align-items: flex-start;
   }
 
+  .section-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .detail-actions {
     width: 100%;
     flex-direction: column;
@@ -731,6 +1001,11 @@ onMounted(() => {
 
   .goal-cards {
     grid-template-columns: 1fr;
+  }
+
+  .action-plan-card__header,
+  .action-plan-item__top {
+    flex-direction: column;
   }
 }
 </style>

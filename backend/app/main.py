@@ -13,7 +13,7 @@ from app.core.bootstrap import ensure_bootstrap_admin
 import asyncio
 from app.core.database import Base, engine
 from app.core.config import settings
-from app.routers import auth, chat, extended_profile, goal, health, profile, user
+from app.routers import action_plan, auth, chat, extended_profile, goal, health, profile, user
 from app.routers import ws as ws_router
 from app.core import ws_manager
 
@@ -149,4 +149,5 @@ app.include_router(user.router)
 app.include_router(profile.router)
 app.include_router(extended_profile.router)
 app.include_router(goal.router)
+app.include_router(action_plan.router)
 app.include_router(ws_router.router)

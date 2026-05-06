@@ -133,6 +133,8 @@ def get_goal_detail(
         if not goal_detail:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
         return goal_detail
+    except HTTPException:
+        raise
     except Exception as exc:
         origin = request.headers.get("origin") if request is not None else None
         error_logger.error(

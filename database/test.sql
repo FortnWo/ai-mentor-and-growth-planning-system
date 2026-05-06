@@ -115,3 +115,41 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
     INDEX idx_breakdowns_parent (parent_id),
     INDEX idx_breakdowns_level (level)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- Action plans
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS action_plans (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    goal_id INT UNSIGNED NOT NULL UNIQUE,
+    title VARCHAR(255) NOT NULL,
+    summary TEXT NULL,
+    status ENUM('pending', 'in_progress', 'completed', 'archived') NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_action_plans_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
+    INDEX idx_action_plans_goal (goal_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+-- -------------------------------------------------------
+-- Action plan items
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS action_plan_items (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    plan_id INT UNSIGNED NOT NULL,
+    breakdown_id INT UNSIGNED NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    frequency ENUM('once', 'daily', 'weekly', 'monthly', 'custom') NOT NULL DEFAULT 'custom',
+    schedule TEXT NULL,
+    status ENUM('pending', 'in_progress', 'completed', 'archived') NOT NULL DEFAULT 'pending',
+    start_date DATE NULL,
+    due_date DATE NULL,
+    sequence SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_action_plan_items_plan FOREIGN KEY (plan_id) REFERENCES action_plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_action_plan_items_breakdown FOREIGN KEY (breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE SET NULL,
+    INDEX idx_action_plan_items_plan (plan_id),
+    INDEX idx_action_plan_items_breakdown (breakdown_id),
+    INDEX idx_action_plan_items_sequence (sequence)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
