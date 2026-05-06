@@ -1,4 +1,5 @@
 import json
+import time
 
 from app.services import chat_service
 
@@ -98,6 +99,20 @@ def _create_goal_with_breakdowns(client, monkeypatch, student_headers, goal_titl
     return goal_id, detail
 
 
+def _poll_action_plan_detail(client, headers, plan_id: int, attempts: int = 10):
+    last_detail = None
+    for _ in range(attempts):
+        detail_response = client.get(f"/action-plans/{plan_id}", headers=headers)
+        if detail_response.status_code != 200:
+            time.sleep(0.05)
+            continue
+        last_detail = detail_response.json()
+        if last_detail.get("status") != "in_progress":
+            return last_detail
+        time.sleep(0.05)
+    return last_detail
+
+
 def test_action_plans_require_auth(client):
     response = client.get("/action-plans")
     assert response.status_code == 401
@@ -152,14 +167,16 @@ def test_create_action_plan_persists_items(client, monkeypatch):
     )
 
     response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
-    assert response.status_code == 200
+    assert response.status_code == 202
 
-    data = response.json()
-    assert data["goal_id"] == goal_id
-    assert data["title"] == "Launch Execution Plan"
-    assert len(data["items"]) == 2
-    assert data["items"][0]["breakdown_id"] == first_breakdown_id
-    assert data["items"][1]["breakdown_id"] == second_breakdown_id
+    plan_id = response.json()["id"]
+    detail = _poll_action_plan_detail(client, headers, plan_id)
+    assert detail is not None
+    assert detail["goal_id"] == goal_id
+    assert detail["title"] == "Launch Execution Plan"
+    assert len(detail["items"]) == 2
+    assert detail["items"][0]["breakdown_id"] == first_breakdown_id
+    assert detail["items"][1]["breakdown_id"] == second_breakdown_id
 
     list_response = client.get("/action-plans", headers=headers)
     assert list_response.status_code == 200
@@ -198,12 +215,11 @@ def test_get_action_plan_detail_includes_items(client, monkeypatch):
     )
 
     create_response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
-    assert create_response.status_code == 200
+    assert create_response.status_code == 202
     plan_id = create_response.json()["id"]
 
-    detail_response = client.get(f"/action-plans/{plan_id}", headers=headers)
-    assert detail_response.status_code == 200
-    detail = detail_response.json()
+    detail = _poll_action_plan_detail(client, headers, plan_id)
+    assert detail is not None
     assert detail["id"] == plan_id
     assert detail["items"]
     assert detail["items"][0]["breakdown_id"] == breakdown_id
@@ -270,13 +286,18 @@ def test_refresh_action_plan_overwrites_items(client, monkeypatch):
     monkeypatch.setattr(chat_service, "build_action_plan_response", mock_action_plan_response)
 
     create_response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
-    assert create_response.status_code == 200
+    assert create_response.status_code == 202
     plan_id = create_response.json()["id"]
-    assert [item["title"] for item in create_response.json()["items"]] == ["Old item"]
+
+    created_detail = _poll_action_plan_detail(client, headers, plan_id)
+    assert created_detail is not None
+    assert [item["title"] for item in created_detail["items"]] == ["Old item"]
 
     refresh_response = client.post(f"/action-plans/{plan_id}/refresh", headers=headers)
-    assert refresh_response.status_code == 200
-    refreshed = refresh_response.json()
+    assert refresh_response.status_code == 202
+
+    refreshed = _poll_action_plan_detail(client, headers, plan_id)
+    assert refreshed is not None
     assert [item["title"] for item in refreshed["items"]] == ["New item", "New follow-up"]
 
 
@@ -290,8 +311,13 @@ def test_invalid_action_plan_json_returns_conflict(client, monkeypatch):
     monkeypatch.setattr(chat_service, "build_action_plan_response", lambda message: "this is not valid json")
 
     response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
-    assert response.status_code == 409
-    assert "valid JSON" in response.json()["detail"]
+    assert response.status_code == 202
+
+    plan_id = response.json()["id"]
+    detail = _poll_action_plan_detail(client, headers, plan_id, attempts=5)
+    assert detail is not None
+    assert detail.get("status") == "failed"
+    assert detail.get("error_message")
 
 
 def test_get_missing_action_plan_returns_not_found(client, monkeypatch):

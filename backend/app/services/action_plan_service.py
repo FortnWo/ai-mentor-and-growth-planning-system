@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
@@ -77,6 +78,29 @@ def refresh_action_plan(db: Session, user_id: int, plan_id: int) -> ActionPlan |
         raise ValueError("AI output is not valid JSON")
 
     return _upsert_action_plan(db, goal, payload, existing_plan=plan)
+
+
+def generate_action_plan_with_retry(
+    db: Session,
+    user_id: int,
+    plan_id: int,
+    *,
+    max_attempts: int = 3,
+    base_delay_seconds: float = 1.0,
+) -> ActionPlan | None:
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return refresh_action_plan(db, user_id, plan_id)
+        except (RuntimeError, ValueError) as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                break
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            time.sleep(delay)
+    if last_error:
+        raise last_error
+    return None
 
 
 def _get_goal_for_user(db: Session, user_id: int, goal_id: int) -> Goal | None:
@@ -197,6 +221,8 @@ def _upsert_action_plan(
         plan.title = _normalize_plan_title(goal, plan_data)
         plan.summary = _normalize_text(plan_data.get("summary"))
 
+    plan.error_message = None
+
     plan.status = _normalize_status(plan_data.get("status"), default=ActionPlanStatus.PENDING.value)
 
     db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
@@ -279,6 +305,71 @@ def _normalize_status(value: object, *, default: str) -> str:
         if normalized in {status.value for status in ActionPlanStatus}:
             return normalized
     return default
+
+
+def prepare_action_plan_for_goal(
+    db: Session,
+    user_id: int,
+    goal_id: int,
+    *,
+    reset_items: bool = False,
+) -> ActionPlan | None:
+    goal = _get_goal_for_user(db, user_id, goal_id)
+    if not goal:
+        return None
+
+    plan = get_action_plan_for_goal(db, user_id, goal_id)
+    if plan is None:
+        plan = ActionPlan(
+            goal_id=goal.id,
+            title=f"{goal.title} Action Plan",
+            summary=None,
+            status=ActionPlanStatus.IN_PROGRESS.value,
+            error_message=None,
+        )
+        db.add(plan)
+        db.flush()
+    else:
+        plan.status = ActionPlanStatus.IN_PROGRESS.value
+        plan.error_message = None
+
+    if reset_items:
+        db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
+
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+def prepare_action_plan_for_refresh(
+    db: Session,
+    user_id: int,
+    plan_id: int,
+    *,
+    reset_items: bool = False,
+) -> ActionPlan | None:
+    plan = get_action_plan_for_user(db, user_id, plan_id)
+    if not plan:
+        return None
+
+    plan.status = ActionPlanStatus.IN_PROGRESS.value
+    plan.error_message = None
+
+    if reset_items:
+        db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
+
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+def mark_action_plan_failed(db: Session, plan_id: int, message: str | None = None) -> None:
+    plan = db.query(ActionPlan).filter(ActionPlan.id == plan_id).first()
+    if not plan:
+        return
+    plan.status = ActionPlanStatus.FAILED.value
+    plan.error_message = (message or "Action plan generation failed.").strip()
+    db.commit()
 
 
 def _normalize_frequency(value: object) -> str:

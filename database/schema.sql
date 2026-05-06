@@ -116,8 +116,10 @@ CREATE TABLE IF NOT EXISTS action_plans (
         'pending',
         'in_progress',
         'completed',
-        'archived'
+        'archived',
+        'failed'
     ) NOT NULL DEFAULT 'pending',
+    error_message TEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_action_plans_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
@@ -138,7 +140,8 @@ CREATE TABLE IF NOT EXISTS action_plan_items (
         'pending',
         'in_progress',
         'completed',
-        'archived'
+        'archived',
+        'failed'
     ) NOT NULL DEFAULT 'pending',
     start_date DATE NULL,
     due_date DATE NULL,

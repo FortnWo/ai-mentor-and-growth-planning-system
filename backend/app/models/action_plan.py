@@ -12,6 +12,7 @@ class ActionPlanStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     ARCHIVED = "archived"
+    FAILED = "failed"
 
 
 class ActionPlanFrequency(str, Enum):
@@ -48,6 +49,7 @@ class ActionPlan(Base):
         nullable=False,
         server_default=text("'pending'"),
     )
+    error_message = Column(Text, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

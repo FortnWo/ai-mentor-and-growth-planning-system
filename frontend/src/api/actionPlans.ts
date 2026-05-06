@@ -1,11 +1,14 @@
 import apiClient from './client'
 
+const ACTION_PLAN_REQUEST_TIMEOUT = 60_000
+
 export interface ActionPlan {
     id: number
     goal_id: number
     title: string
     summary: string | null
     status: string
+    error_message?: string | null
     created_at: string
     updated_at: string
 }
@@ -35,7 +38,9 @@ export interface ActionPlanCreatePayload {
 }
 
 export const createActionPlan = (payload: ActionPlanCreatePayload): Promise<ActionPlanDetail> =>
-    apiClient.post<ActionPlanDetail>('/action-plans', payload).then((response) => response.data)
+    apiClient
+        .post<ActionPlanDetail>('/action-plans', payload, { timeout: ACTION_PLAN_REQUEST_TIMEOUT })
+        .then((response) => response.data)
 
 export const listActionPlans = (): Promise<ActionPlan[]> =>
     apiClient.get<ActionPlan[]>('/action-plans').then((response) => response.data)
@@ -44,7 +49,9 @@ export const getActionPlanDetail = (planId: number): Promise<ActionPlanDetail> =
     apiClient.get<ActionPlanDetail>(`/action-plans/${planId}`).then((response) => response.data)
 
 export const refreshActionPlan = (planId: number): Promise<ActionPlanDetail> =>
-    apiClient.post<ActionPlanDetail>(`/action-plans/${planId}/refresh`).then((response) => response.data)
+    apiClient
+        .post<ActionPlanDetail>(`/action-plans/${planId}/refresh`, undefined, { timeout: ACTION_PLAN_REQUEST_TIMEOUT })
+        .then((response) => response.data)
 
 export const deleteActionPlan = (planId: number): Promise<void> =>
     apiClient.delete(`/action-plans/${planId}`).then(() => undefined)

@@ -15,7 +15,9 @@ const isRefreshing = ref(false)
 const isPollingBreakdown = ref(false)
 const isActionPlanFetching = ref(false)
 const isActionPlanBusy = ref(false)
+const isActionPlanPolling = ref(false)
 const pollingGoalId = ref<number | null>(null)
+const pollingActionPlanGoalId = ref<number | null>(null)
 const errorMessage = ref('')
 
 // Form state
@@ -54,7 +56,7 @@ const pollGoalBreakdown = async (goalId: number) => {
   isPollingBreakdown.value = true
   pollingGoalId.value = goalId
 
-  const maxAttempts = 10
+  const maxAttempts = 20
   const delayMs = 1500
 
   try {
@@ -73,6 +75,40 @@ const pollGoalBreakdown = async (goalId: number) => {
   } finally {
     isPollingBreakdown.value = false
     pollingGoalId.value = null
+  }
+}
+
+const pollActionPlanForGoal = async (goalId: number) => {
+  if (isActionPlanPolling.value && pollingActionPlanGoalId.value === goalId) return
+
+  isActionPlanPolling.value = true
+  pollingActionPlanGoalId.value = goalId
+
+  const maxAttempts = 20
+  const delayMs = 1500
+
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      await loadActionPlans()
+      const summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
+      if (summary) {
+        const detail = await getActionPlanDetail(summary.id)
+        if (selectedGoal.value?.id === goalId || !selectedGoal.value) {
+          selectedActionPlan.value = detail
+        }
+        if (detail.status !== 'in_progress') {
+          return
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  } catch (error) {
+    console.error(error)
+  } finally {
+    if (pollingActionPlanGoalId.value === goalId) {
+      isActionPlanPolling.value = false
+      pollingActionPlanGoalId.value = null
+    }
   }
 }
 
@@ -122,7 +158,11 @@ const upsertActionPlanSummary = (detail: ActionPlanDetail) => {
 }
 
 const loadActionPlanForGoal = async (goalId: number) => {
-  const summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
+  let summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
+  if (!summary) {
+    await loadActionPlans()
+    summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
+  }
   if (!summary) {
     selectedActionPlan.value = null
     return
@@ -132,6 +172,9 @@ const loadActionPlanForGoal = async (goalId: number) => {
     isActionPlanFetching.value = true
     selectedActionPlan.value = await getActionPlanDetail(summary.id)
     errorMessage.value = ''
+    if (selectedActionPlan.value.status === 'in_progress') {
+      void pollActionPlanForGoal(goalId)
+    }
   } catch (error) {
     selectedActionPlan.value = null
     errorMessage.value = 'Failed to load action plan details'
@@ -149,8 +192,16 @@ const handleGenerateActionPlan = async () => {
     const detail = await createActionPlan({ goal_id: selectedGoal.value.id })
     selectedActionPlan.value = detail
     upsertActionPlanSummary(detail)
+    if (detail.status === 'in_progress') {
+      void pollActionPlanForGoal(selectedGoal.value.id)
+    }
     errorMessage.value = ''
   } catch (error) {
+    if (isTimeoutError(error) && selectedGoal.value) {
+      errorMessage.value = ''
+      void pollActionPlanForGoal(selectedGoal.value.id)
+      return
+    }
     errorMessage.value = 'Failed to generate action plan'
     console.error(error)
   } finally {
@@ -166,8 +217,16 @@ const handleRefreshActionPlan = async () => {
     const detail = await refreshActionPlan(selectedActionPlan.value.id)
     selectedActionPlan.value = detail
     upsertActionPlanSummary(detail)
+    if (detail.status === 'in_progress') {
+      void pollActionPlanForGoal(selectedActionPlan.value.goal_id)
+    }
     errorMessage.value = ''
   } catch (error) {
+    if (isTimeoutError(error)) {
+      errorMessage.value = ''
+      void pollActionPlanForGoal(selectedActionPlan.value.goal_id)
+      return
+    }
     errorMessage.value = 'Failed to refresh action plan'
     console.error(error)
   } finally {
@@ -261,11 +320,39 @@ const formatDate = (dateStr: string | null) => {
   return new Date(dateStr).toLocaleDateString()
 }
 
+const isTimeoutError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false
+  const maybeError = error as { code?: string; message?: string }
+  if (maybeError.code === 'ECONNABORTED') return true
+  const message = maybeError.message?.toLowerCase() ?? ''
+  return message.includes('timeout')
+}
+
 // Computed
 const hasGoals = computed(() => goals.value.length > 0)
 const breakdownNodes = computed(() => selectedGoal.value?.breakdowns.root_nodes || [])
 const actionPlanItems = computed<ActionPlanItem[]>(() => selectedActionPlan.value?.items || [])
 const hasActionPlan = computed(() => Boolean(selectedActionPlan.value))
+const isActionPlanLoading = computed(() => isActionPlanFetching.value || isActionPlanPolling.value)
+const actionPlanErrorMessage = computed(() => selectedActionPlan.value?.error_message?.trim() || '')
+const breakdownStatusMessage = computed(() => {
+  if (isPollingBreakdown.value) {
+    return 'AI is generating the breakdown. Auto-refreshing...'
+  }
+  return 'AI is generating your action plan. Please refresh in a moment.'
+})
+const actionPlanStatusMessage = computed(() => {
+  if (isActionPlanBusy.value) {
+    return 'Submitting generation request to AI...'
+  }
+  if (isActionPlanPolling.value) {
+    return 'AI is generating your action plan. Auto-refreshing...'
+  }
+  if (isActionPlanFetching.value) {
+    return 'Loading action plan details...'
+  }
+  return ''
+})
 
 // Lifecycle
 onMounted(() => {
@@ -391,7 +478,7 @@ onMounted(() => {
             <BreakdownNode v-for="node in breakdownNodes" :key="node.id" :node="node" />
           </div>
           <p v-else class="placeholder">
-            AI is generating your action plan. Please refresh in a moment.
+            {{ breakdownStatusMessage }}
           </p>
         </div>
 
@@ -402,7 +489,7 @@ onMounted(() => {
             <div class="detail-actions">
               <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
                 @click="hasActionPlan ? handleRefreshActionPlan() : handleGenerateActionPlan()"
-                :disabled="isActionPlanBusy || isActionPlanFetching">
+                :disabled="isActionPlanBusy || isActionPlanLoading">
                 {{ isActionPlanBusy ? 'Processing...' : hasActionPlan ? '🔄 Refresh Plan' : '✨ Generate Plan' }}
               </button>
               <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
@@ -412,7 +499,11 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="isActionPlanFetching" class="placeholder">
+          <p v-if="actionPlanStatusMessage" class="status-hint">
+            {{ actionPlanStatusMessage }}
+          </p>
+
+          <div v-if="isActionPlanLoading" class="placeholder">
             Loading action plan...
           </div>
           <div v-else-if="selectedActionPlan" class="action-plan-card">
@@ -425,6 +516,10 @@ onMounted(() => {
               </div>
               <span class="status-badge">{{ selectedActionPlan.status }}</span>
             </div>
+
+            <p v-if="actionPlanErrorMessage" class="status-hint status-hint--error">
+              {{ actionPlanErrorMessage }}
+            </p>
 
             <div v-if="actionPlanItems.length > 0" class="action-plan-list">
               <article v-for="item in actionPlanItems" :key="item.id" class="action-plan-item">
@@ -449,7 +544,9 @@ onMounted(() => {
             </div>
 
             <p v-else class="placeholder action-plan-empty">
-              This plan is valid, but AI returned no items. Refresh to regenerate.
+              {{ selectedActionPlan.status === 'failed'
+                ? 'Action plan generation failed. Please refresh to retry.'
+                : 'This plan is valid, but AI returned no items. Refresh to regenerate.' }}
             </p>
           </div>
           <p v-else class="placeholder">
@@ -489,6 +586,16 @@ onMounted(() => {
   padding: 1rem;
   margin-bottom: 1rem;
   border-radius: 4px;
+}
+
+.status-hint {
+  margin: 0.5rem 0 0;
+  color: var(--secondary-text);
+  font-size: 0.9rem;
+}
+
+.status-hint--error {
+  color: #d14343;
 }
 
 .page-header {
