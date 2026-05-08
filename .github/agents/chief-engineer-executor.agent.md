@@ -38,6 +38,7 @@ user-invocable: true
 ## 标准执行流程
 1. 主动加载上下文
 - 先查看目标目录与相关文件，确认现有实现边界。
+- 优先读取 docs/agent-workflow/current-task.md 作为当前任务的单一事实源。
 
 2. 阅读相关文件
 - 明确需要新增、修改、复用的文件与符号。
@@ -50,6 +51,7 @@ user-invocable: true
 
 5. 检查一致性
 - 检查类型、导入、调用链、接口契约与运行风险。
+- 将验证结果回写到 docs/agent-workflow/current-task.md 的执行日志区。
 
 6. 提醒下一步
 - 给出可直接执行的验证与后续操作建议。
