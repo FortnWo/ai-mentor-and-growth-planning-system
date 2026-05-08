@@ -95,6 +95,9 @@ Important backend variables in `backend/.env`:
 - `AUTH_SECRET_KEY`: JWT signing key (must be changed in production).
 - `AUTH_ACCESS_TOKEN_EXPIRES_MINUTES`: token expiry in minutes.
 - `LLM_API_KEY`, `LLM_API_BASE_URL`, `LLM_MODEL`, `LLM_SYSTEM_PROMPT`: AI provider settings.
+- `RUN_LIVE_AI_TESTS`: set to `1` to enable live AI integration tests.
+- `GOAL_BREAKDOWN_ENABLED`: enable/disable goal breakdown generation APIs.
+- `ACTION_PLAN_ENABLED`: enable/disable action plan generation APIs.
 - `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_FULL_NAME`:
 	optional startup bootstrap admin. When set, backend creates this admin if it does not already exist.
 
@@ -123,6 +126,25 @@ Frontend variable:
 | POST | `/chat` | Send message; returns session + user message immediately, assistant reply is asynchronous |
 | GET | `/chat/sessions` | List chat sessions for current authenticated user |
 | GET | `/chat/{session_id}/messages` | List messages in session for current authenticated user |
+
+### Growth Planning (Authenticated)
+
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/goals` | Create goal and trigger async AI breakdown |
+| GET | `/goals` | List current user's goals |
+| GET | `/goals/{goal_id}` | Get goal detail with breakdown tree |
+| PUT | `/goals/{goal_id}` | Update goal metadata |
+| POST | `/goals/{goal_id}/refresh-breakdown` | Re-run AI goal breakdown asynchronously |
+| DELETE | `/goals/{goal_id}` | Delete goal and related breakdown nodes |
+| POST | `/action-plans` | Create or reuse in-progress action plan for a goal |
+| GET | `/action-plans` | List current user's action plans |
+| GET | `/action-plans/{plan_id}` | Get action plan detail |
+| POST | `/action-plans/{plan_id}/refresh` | Refresh action plan asynchronously |
+| DELETE | `/action-plans/{plan_id}` | Delete action plan |
+| GET | `/profile/extended/me` | Get extended profile (auto-create if missing) |
+| PUT | `/profile/extended/me` | Update extended profile |
+| POST | `/profile/extended/me/refresh-from-chat` | Rebuild extended profile from chat history |
 
 ### WebSocket
 
