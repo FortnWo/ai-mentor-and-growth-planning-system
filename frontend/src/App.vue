@@ -17,61 +17,70 @@ const admin = computed(() => isAdmin(authState.user))
 const userLabel = computed(() => authState.user?.full_name || authState.user?.username || 'User')
 const workspaceTitle = computed(() => {
   if (route.path === '/chat') {
-    return 'Conversation studio'
+    return '对话工作台'
+  }
+
+  if (route.path === '/growth') {
+    return '成长记录工作台'
   }
 
   if (route.path === '/profile/extended') {
-    return 'Extended profile lab'
+    return '扩展画像实验室'
   }
 
   if (route.path === '/profile') {
-    return 'Identity workspace'
+    return '身份信息工作台'
   }
 
   if (route.path === '/plan') {
-    return 'Growth roadmap'
+    return '成长路线图'
   }
 
   if (route.path.startsWith('/admin')) {
-    return 'Admin command center'
+    return '管理控制台'
   }
 
-  return 'AI mentor workspace'
+  return 'AI 导师工作台'
 })
 const workspaceSubtitle = computed(() => {
   if (route.path === '/chat') {
-    return 'Track sessions, compare context, and keep the discussion flow visually calm.'
+    return '整理会话、对照上下文，让对话流保持安静而清晰。'
+  }
+
+  if (route.path === '/growth') {
+    return '记录每一个小进步，回看成长轨迹，让成长痕迹始终可见。'
   }
 
   if (route.path === '/profile/extended') {
-    return 'Capture interests, skills, habits, and goals with manual edits plus chat-driven extraction.'
+    return '通过手动编辑与聊天抽取，持续整理兴趣、技能、习惯和目标。'
   }
 
   if (route.path === '/profile') {
-    return 'Review your identity snapshot and keep the profile clean, focused, and current.'
+    return '查看你的身份概览，让资料保持干净、聚焦、及时更新。'
   }
 
   if (route.path === '/plan') {
-    return 'A future planning surface with a strong, cinematic header and room for growth signals.'
+    return '面向未来的规划入口，带着更清晰的目标感与成长信号。'
   }
 
   if (route.path.startsWith('/admin')) {
-    return 'High-density controls with a premium dashboard rhythm for faster moderation.'
+    return '高密度管理界面，让审核与控制更快、更稳。'
   }
 
-  return 'A glassy interface with animated atmosphere, clear hierarchy, and fast navigation.'
+  return '一个具有层次感与动效氛围的玻璃风工作台。'
 })
 const navigationItems = computed(() => {
   if (!authenticated.value) {
-    return [{ to: '/login', label: 'Login' }]
+    return [{ to: '/login', label: '登录' }]
   }
 
   return [
-    { to: '/chat', label: 'Chat' },
-    { to: '/profile', label: 'Profile' },
-    { to: '/profile/extended', label: 'Extended Profile' },
-    { to: '/plan', label: 'Growth Plan' },
-    ...(admin.value ? [{ to: '/admin/users', label: 'Admin Users' }] : []),
+    { to: '/chat', label: '聊天' },
+    { to: '/profile', label: '我的资料' },
+    { to: '/profile/extended', label: '扩展画像' },
+    { to: '/plan', label: '成长计划' },
+    { to: '/growth', label: '成长记录' },
+    ...(admin.value ? [{ to: '/admin/users', label: '用户管理' }] : []),
   ]
 })
 
@@ -127,13 +136,13 @@ async function logout() {
         </span>
         <span class="brand-copy">
           <strong>AI Mentor</strong>
-          <small>{{ authenticated ? userLabel : 'Growth planning studio' }}</small>
+          <small>{{ authenticated ? userLabel : '成长规划工作台' }}</small>
         </span>
       </RouterLink>
 
       <div v-if="authenticated" class="header-status">
         <span class="status-dot"></span>
-        <span>{{ admin ? 'Admin access' : 'Student workspace' }}</span>
+        <span>{{ admin ? '管理员权限' : '学生工作台' }}</span>
       </div>
 
       <nav class="desktop-nav" :class="{ 'desktop-nav--guest': !authenticated }">
@@ -143,19 +152,19 @@ async function logout() {
         </RouterLink>
 
         <button v-if="authenticated" class="button button--ghost nav-button" type="button" @click="logout">
-          Logout
+          退出登录
         </button>
       </nav>
 
       <div class="header-actions">
         <RouterLink v-if="!authenticated" class="button button--primary login-button" to="/login"
           @click="closeMobileMenu">
-          Login
+          登录
         </RouterLink>
 
         <button class="menu-toggle button button--ghost" type="button" @click="mobileMenuOpen = !mobileMenuOpen">
           <span aria-hidden="true">☰</span>
-          <span>Menu</span>
+          <span>菜单</span>
         </button>
       </div>
     </header>
@@ -163,7 +172,7 @@ async function logout() {
     <transition name="fade-slide">
       <div v-if="mobileMenuOpen" class="mobile-menu glass-card">
         <div class="mobile-menu__top">
-          <span class="eyebrow">Navigation</span>
+          <span class="eyebrow">导航</span>
           <button class="button button--ghost mobile-close" type="button" @click="closeMobileMenu">
             ×
           </button>
@@ -175,7 +184,7 @@ async function logout() {
         </RouterLink>
 
         <button v-if="authenticated" class="button button--primary mobile-logout" type="button" @click="logout">
-          Logout
+          退出登录
         </button>
       </div>
     </transition>
@@ -194,8 +203,9 @@ async function logout() {
           </p>
 
           <div class="hero-actions">
-            <RouterLink class="button button--primary" to="/chat">Open Chat</RouterLink>
-            <RouterLink class="button button--ghost" to="/plan">View Plan</RouterLink>
+            <RouterLink class="button button--primary" to="/chat">打开聊天</RouterLink>
+            <RouterLink class="button button--ghost" to="/plan">查看计划</RouterLink>
+            <RouterLink class="button button--ghost" to="/growth">Growth Records</RouterLink>
           </div>
         </div>
 
@@ -208,27 +218,27 @@ async function logout() {
 
           <div class="hero-floating">
             <article class="hero-floating__card">
-              <p class="hero-floating__label">Workspace</p>
-              <p class="hero-floating__value">Live</p>
-              <p class="hero-floating__trend">Dynamic layout with motion layers</p>
+              <p class="hero-floating__label">工作区</p>
+              <p class="hero-floating__value">在线</p>
+              <p class="hero-floating__trend">带有动效层次的动态布局</p>
             </article>
 
             <article class="hero-floating__card">
-              <p class="hero-floating__label">Role</p>
-              <p class="hero-floating__value">{{ admin ? 'Admin' : 'Student' }}</p>
-              <p class="hero-floating__trend">{{ admin ? 'Control access and users' : 'Plan and chat with AI' }}</p>
+              <p class="hero-floating__label">角色</p>
+              <p class="hero-floating__value">{{ admin ? '管理员' : '学生' }}</p>
+              <p class="hero-floating__trend">{{ admin ? '管理权限与用户' : '与 AI 一起规划和聊天' }}</p>
             </article>
 
             <article class="hero-floating__card">
-              <p class="hero-floating__label">Status</p>
-              <p class="hero-floating__value">Synced</p>
-              <p class="hero-floating__trend">CORS + API route connected</p>
+              <p class="hero-floating__label">状态</p>
+              <p class="hero-floating__value">已同步</p>
+              <p class="hero-floating__trend">CORS 与接口路由已连接</p>
             </article>
 
             <article class="hero-floating__card">
-              <p class="hero-floating__label">Motion</p>
-              <p class="hero-floating__value">On</p>
-              <p class="hero-floating__trend">Glow, drift, and reveal animations</p>
+              <p class="hero-floating__label">动效</p>
+              <p class="hero-floating__value">开启</p>
+              <p class="hero-floating__trend">光晕、漂移与渐显动画</p>
             </article>
           </div>
         </div>

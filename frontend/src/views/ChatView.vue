@@ -165,7 +165,7 @@ async function refreshSessions(optionsOrEvent: RefreshSessionsOptions | Event = 
       await loadMessages(selectedSessionId.value)
     }
   } catch {
-    error.value = 'Could not load sessions for current user.'
+    error.value = '无法加载当前用户的会话。'
   } finally {
     loading.value = false
   }
@@ -195,7 +195,7 @@ async function loadMessages(sessionId: number, options: LoadMessagesOptions = {}
       console.error('[loadMessages] retry failed for', sessionId, err)
     }
     if (!silent) {
-      error.value = 'Could not load messages for this session.'
+      error.value = '无法加载该会话的消息。'
     }
   } finally {
     loading.value = false
@@ -245,7 +245,7 @@ async function saveRenameSession(session: ChatSessionRead) {
 
   const trimmedTitle = renameDraftTitle.value.trim()
   if (!trimmedTitle) {
-    error.value = 'Session title cannot be empty.'
+    error.value = '会话标题不能为空。'
     return
   }
 
@@ -261,7 +261,7 @@ async function saveRenameSession(session: ChatSessionRead) {
     await refreshSessions()
     cancelRenameSession()
   } catch {
-    error.value = 'Could not rename this session.'
+    error.value = '无法重命名该会话。'
   } finally {
     if (renamingSessionId.value === session.id) {
       renamingSessionId.value = null
@@ -285,11 +285,11 @@ async function deleteCurrentSession(sessionId: number) {
 
   const session = sessions.value.find((item) => item.id === sessionId)
   if (!session) {
-    error.value = 'Session not found.'
+    error.value = '未找到会话。'
     return
   }
 
-  const confirmed = window.confirm(`Delete session ${session.title || `#${session.id}`}?`)
+  const confirmed = window.confirm(`确定删除会话 ${session.title || `#${session.id}`} 吗？`)
   if (!confirmed) {
     return
   }
@@ -306,7 +306,7 @@ async function deleteCurrentSession(sessionId: number) {
 
     await refreshSessions()
   } catch {
-    error.value = 'Could not delete this session.'
+    error.value = '无法删除该会话。'
   } finally {
     deletingSessionId.value = null
   }
@@ -398,7 +398,7 @@ async function submitMessage() {
       }
     }
   } catch {
-    error.value = 'Could not send message.'
+    error.value = '无法发送消息。'
   } finally {
     loading.value = false
   }
@@ -419,41 +419,41 @@ onMounted(async () => {
     <section class="page-header glass-card panel hero-frame reveal">
       <div class="title-row">
         <div>
-          <p class="page-kicker">AI mentor chat</p>
-          <h1 class="page-title">Conversational guidance, designed like a studio tool.</h1>
+          <p class="page-kicker">AI 导师聊天</p>
+          <h1 class="page-title">像工作台一样设计的对话指导。</h1>
           <p class="page-subtitle">
-            Keep sessions organized, review history, and send messages in a calm, high-contrast workspace.
+            在安静而高对比度的工作区中整理会话、回看历史并发送消息。
           </p>
         </div>
 
         <div class="hero-actions">
           <button class="button button--primary" :disabled="loading" type="button" @click="refreshSessions">
-            Refresh Sessions
+            刷新会话
           </button>
           <button class="button button--ghost" :disabled="loading" type="button" @click="startNewSession">
-            New Chat
+            新建聊天
           </button>
         </div>
       </div>
 
       <div class="stat-grid">
         <article class="stat-card">
-          <p class="stat-label">Sessions</p>
+          <p class="stat-label">会话</p>
           <p class="stat-value">{{ sessionCount }}</p>
-          <p class="stat-note">Saved conversation threads</p>
+          <p class="stat-note">已保存的对话线程</p>
         </article>
 
         <article class="stat-card">
-          <p class="stat-label">Messages</p>
+          <p class="stat-label">消息</p>
           <p class="stat-value">{{ messageCount }}</p>
-          <p class="stat-note">Visible in the current thread</p>
+          <p class="stat-note">当前线程中的可见消息</p>
         </article>
 
         <article class="stat-card">
-          <p class="stat-label">Active session</p>
+          <p class="stat-label">当前会话</p>
           <p class="stat-value">{{ activeSession?.title || `Session #${activeSession?.id ?? '-'}` }}</p>
           <p class="stat-note">
-            {{ activeSession ? new Date(activeSession.created_at).toLocaleString() : 'Start a new conversation' }}
+            {{ activeSession ? new Date(activeSession.created_at).toLocaleString() : '开始一个新的对话' }}
           </p>
         </article>
       </div>
@@ -465,24 +465,24 @@ onMounted(async () => {
       <aside class="panel sessions-panel reveal reveal--delay-1">
         <div class="title-row">
           <div>
-            <p class="eyebrow">Sessions</p>
-            <h2 class="section-title">Conversation history</h2>
+            <p class="eyebrow">会话</p>
+            <h2 class="section-title">对话历史</h2>
           </div>
 
-          <span class="chip chip--neutral">{{ sessionCount }} total</span>
+          <span class="chip chip--neutral">共 {{ sessionCount }} 条</span>
         </div>
 
         <div class="field">
-          <label class="label" for="session-title">New Session Title (optional)</label>
-          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="e.g. Midterm recovery plan" />
+          <label class="label" for="session-title">新会话标题（可选）</label>
+          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="例如：期中复盘计划" />
         </div>
 
         <div class="button-row">
           <button class="button button--ghost" :disabled="loading" type="button" @click="refreshSessions">
-            Refresh
+            刷新
           </button>
           <button class="button button--primary" :disabled="loading" type="button" @click="startNewSession">
-            New Chat
+            新建聊天
           </button>
         </div>
 
@@ -492,21 +492,21 @@ onMounted(async () => {
             <template v-if="renamingSessionId === session.id">
               <div class="session-card__editor">
                 <div class="session-card__editor-copy">
-                  <strong>Rename session</strong>
+                  <strong>重命名会话</strong>
                   <small>{{ new Date(session.created_at).toLocaleString() }}</small>
                 </div>
 
-                <input v-model="renameDraftTitle" class="input session-card__input" placeholder="Enter a session title"
+                <input v-model="renameDraftTitle" class="input session-card__input" placeholder="请输入会话标题"
                   :disabled="loading" type="text" @keydown.enter.prevent="saveRenameSession(session)"
                   @keydown.esc.prevent="cancelRenameSession" />
 
                 <div class="session-card__editor-actions">
                   <button class="button button--primary" :disabled="loading" type="button"
                     @click="saveRenameSession(session)">
-                    Save
+                    保存
                   </button>
                   <button class="button button--ghost" :disabled="loading" type="button" @click="cancelRenameSession">
-                    Cancel
+                    取消
                   </button>
                 </div>
               </div>
@@ -514,7 +514,7 @@ onMounted(async () => {
 
             <template v-else>
               <button class="session-card__main" type="button" @click="loadMessages(session.id)">
-                <strong>{{ session.title || `Session #${session.id}` }}</strong>
+                <strong>{{ session.title || `会话 #${session.id}` }}</strong>
                 <small>{{ new Date(session.created_at).toLocaleString() }}</small>
               </button>
 
@@ -526,14 +526,14 @@ onMounted(async () => {
           </div>
         </div>
 
-        <p v-if="!sessions.length" class="empty-state">No sessions yet. Send your first message.</p>
+        <p v-if="!sessions.length" class="empty-state">还没有会话，先发送第一条消息吧。</p>
       </aside>
 
       <section class="panel chat-panel reveal reveal--delay-2">
         <div class="title-row">
           <div>
-            <p class="eyebrow">Chat canvas</p>
-            <h2 class="section-title">{{ activeSession?.title || 'Untitled session' }}</h2>
+            <p class="eyebrow">聊天画布</p>
+            <h2 class="section-title">{{ activeSession?.title || '未命名会话' }}</h2>
           </div>
 
           <span class="chip chip--active">{{ messageCount }} messages</span>
@@ -546,19 +546,18 @@ onMounted(async () => {
             'message-bubble',
             message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
           ]">
-            <strong>{{ message.role === 'user' ? 'You' : 'AI Mentor' }}</strong>
-            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">Generating...</small>
-            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">Generation
-              failed</small>
+            <strong>{{ message.role === 'user' ? '你' : 'AI 导师' }}</strong>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">正在生成…</small>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">生成失败</small>
             <p>{{ message.content }}</p>
           </div>
 
-          <p v-if="!messages.length" class="empty-state">Start a conversation to see messages here.</p>
+          <p v-if="!messages.length" class="empty-state">开始一段对话后，消息会显示在这里。</p>
         </div>
 
         <form class="message-form" @submit.prevent="submitMessage">
-          <input v-model="input" :disabled="loading" class="input" placeholder="Ask your AI mentor anything..." />
-          <button class="button button--primary" :disabled="loading" type="submit">Send</button>
+          <input v-model="input" :disabled="loading" class="input" placeholder="向你的 AI 导师提问…" />
+          <button class="button button--primary" :disabled="loading" type="submit">发送</button>
         </form>
       </section>
     </section>

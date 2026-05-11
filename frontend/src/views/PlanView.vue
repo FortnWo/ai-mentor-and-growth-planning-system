@@ -35,7 +35,7 @@ const loadGoals = async () => {
     goals.value = await listGoals()
     errorMessage.value = ''
   } catch (error) {
-    errorMessage.value = 'Failed to load goals'
+    errorMessage.value = '加载目标失败'
     console.error(error)
   } finally {
     isLoading.value = false
@@ -337,19 +337,19 @@ const isActionPlanLoading = computed(() => isActionPlanFetching.value || isActio
 const actionPlanErrorMessage = computed(() => selectedActionPlan.value?.error_message?.trim() || '')
 const breakdownStatusMessage = computed(() => {
   if (isPollingBreakdown.value) {
-    return 'AI is generating the breakdown. Auto-refreshing...'
+    return 'AI 正在生成拆解，已自动刷新…'
   }
-  return 'AI is generating your action plan. Please refresh in a moment.'
+  return 'AI 正在生成你的行动计划，请稍后刷新。'
 })
 const actionPlanStatusMessage = computed(() => {
   if (isActionPlanBusy.value) {
-    return 'Submitting generation request to AI...'
+    return '正在向 AI 提交生成请求…'
   }
   if (isActionPlanPolling.value) {
-    return 'AI is generating your action plan. Auto-refreshing...'
+    return 'AI 正在生成你的行动计划，已自动刷新…'
   }
   if (isActionPlanFetching.value) {
-    return 'Loading action plan details...'
+    return '正在加载行动计划详情…'
   }
   return ''
 })
@@ -369,51 +369,51 @@ onMounted(() => {
 
     <!-- Header -->
     <section class="page-header glass-card panel hero-frame reveal">
-      <p class="page-kicker">Growth Planning</p>
-      <h1 class="page-title">Goals & Roadmap</h1>
+      <p class="page-kicker">成长规划</p>
+      <h1 class="page-title">目标与路线图</h1>
       <p class="page-subtitle">
-        Define your growth goals and let AI help break them down into actionable steps.
+        设定你的成长目标，并让 AI 帮你拆解成可执行步骤。
       </p>
 
       <div class="hero-actions">
         <button class="btn btn--primary" @click="showCreateForm = !showCreateForm" :disabled="isLoading">
-          {{ showCreateForm ? 'Cancel' : '+ New Goal' }}
+          {{ showCreateForm ? '取消' : '+ 新建目标' }}
         </button>
       </div>
     </section>
 
     <!-- Create Form -->
     <section v-if="showCreateForm" class="panel create-form reveal">
-      <h2 class="section-title">Create New Goal</h2>
+      <h2 class="section-title">创建新目标</h2>
       <form @submit.prevent="handleCreateGoal" class="form-grid">
         <div class="form-group">
-          <label for="goal-title">Goal Title *</label>
-          <input id="goal-title" v-model="formData.title" type="text" placeholder="e.g., Learn Web Development"
+          <label for="goal-title">目标标题 *</label>
+          <input id="goal-title" v-model="formData.title" type="text" placeholder="例如：学习前端开发"
             required />
         </div>
 
         <div class="form-group">
-          <label for="goal-description">Description</label>
-          <textarea id="goal-description" v-model="formData.description" placeholder="Describe your goal in detail..."
+          <label for="goal-description">描述</label>
+          <textarea id="goal-description" v-model="formData.description" placeholder="详细描述你的目标…"
             rows="4" />
         </div>
 
         <div class="form-group form-group--half">
-          <label for="goal-priority">Priority</label>
+          <label for="goal-priority">优先级</label>
           <select id="goal-priority" v-model="formData.priority">
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
           </select>
         </div>
 
         <div class="form-group form-group--half">
-          <label for="goal-target-date">Target Date</label>
+          <label for="goal-target-date">目标日期</label>
           <input id="goal-target-date" v-model="formData.target_date" type="date" />
         </div>
 
         <button type="submit" class="btn btn--primary btn--full" :disabled="isLoading">
-          {{ isLoading ? 'Creating...' : 'Create Goal' }}
+          {{ isLoading ? '创建中…' : '创建目标' }}
         </button>
       </form>
     </section>
@@ -422,7 +422,7 @@ onMounted(() => {
     <div v-if="hasGoals" class="goals-container">
       <!-- Goals List -->
       <section class="goals-list reveal">
-        <h2 class="section-title">Your Goals</h2>
+        <h2 class="section-title">你的目标</h2>
         <div class="goal-cards">
           <div v-for="goal in goals" :key="goal.id" class="goal-card"
             :class="{ 'goal-card--selected': selectedGoal?.id === goal.id }" @click="selectGoal(goal)">
@@ -451,10 +451,10 @@ onMounted(() => {
           <h2>{{ selectedGoal.title }}</h2>
           <div class="detail-actions">
             <button class="btn btn--secondary btn--sm" @click="handleRefreshBreakdown" :disabled="isRefreshing">
-              {{ isRefreshing ? 'Refreshing...' : '🔄 Refresh' }}
+              {{ isRefreshing ? '刷新中…' : '🔄 刷新' }}
             </button>
             <button class="btn btn--danger btn--sm" @click="handleDeleteGoal(selectedGoal.id)">
-              🗑️ Delete
+              🗑️ 删除
             </button>
           </div>
         </div>
@@ -464,16 +464,16 @@ onMounted(() => {
         </p>
 
         <div class="detail-meta">
-          <span>Status: <strong>{{ selectedGoal.status }}</strong></span>
-          <span>Priority: <strong>{{ selectedGoal.priority }}</strong></span>
+          <span>状态：<strong>{{ selectedGoal.status }}</strong></span>
+          <span>优先级：<strong>{{ selectedGoal.priority }}</strong></span>
           <span v-if="selectedGoal.target_date">
-            Target: <strong>{{ formatDate(selectedGoal.target_date) }}</strong>
+            目标日期：<strong>{{ formatDate(selectedGoal.target_date) }}</strong>
           </span>
         </div>
 
         <!-- Breakdown Tree -->
         <div class="breakdown-section">
-          <h3 class="breakdown-title">Goal Breakdown</h3>
+          <h3 class="breakdown-title">目标拆解</h3>
           <div v-if="breakdownNodes.length > 0" class="breakdown-tree">
             <BreakdownNode v-for="node in breakdownNodes" :key="node.id" :node="node" />
           </div>
@@ -485,16 +485,16 @@ onMounted(() => {
         <!-- Action Plan -->
         <div class="action-plan-section">
           <div class="section-row">
-            <h3 class="breakdown-title">Action Plan</h3>
+            <h3 class="breakdown-title">行动计划</h3>
             <div class="detail-actions">
               <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
                 @click="hasActionPlan ? handleRefreshActionPlan() : handleGenerateActionPlan()"
                 :disabled="isActionPlanBusy || isActionPlanLoading">
-                {{ isActionPlanBusy ? 'Processing...' : hasActionPlan ? '🔄 Refresh Plan' : '✨ Generate Plan' }}
+                {{ isActionPlanBusy ? '处理中…' : hasActionPlan ? '🔄 刷新计划' : '✨ 生成计划' }}
               </button>
               <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
                 :disabled="isActionPlanBusy">
-                🗑️ Remove Plan
+                🗑️ 移除计划
               </button>
             </div>
           </div>
@@ -504,7 +504,7 @@ onMounted(() => {
           </p>
 
           <div v-if="isActionPlanLoading" class="placeholder">
-            Loading action plan...
+            正在加载行动计划…
           </div>
           <div v-else-if="selectedActionPlan" class="action-plan-card">
             <div class="action-plan-card__header">
@@ -545,12 +545,12 @@ onMounted(() => {
 
             <p v-else class="placeholder action-plan-empty">
               {{ selectedActionPlan.status === 'failed'
-                ? 'Action plan generation failed. Please refresh to retry.'
-                : 'This plan is valid, but AI returned no items. Refresh to regenerate.' }}
+                ? '行动计划生成失败，请刷新重试。'
+                : '该计划有效，但 AI 没有返回条目，请刷新重新生成。' }}
             </p>
           </div>
           <p v-else class="placeholder">
-            Select a goal and generate an action plan to see a structured execution list here.
+            选择一个目标并生成行动计划后，这里会展示结构化的执行清单。
           </p>
         </div>
       </section>
@@ -560,13 +560,13 @@ onMounted(() => {
     <section v-else class="panel roadmap-panel reveal reveal--delay-2">
       <div class="title-row">
         <div>
-          <p class="eyebrow">Getting Started</p>
-          <h2 class="section-title">No goals yet</h2>
+          <p class="eyebrow">开始使用</p>
+          <h2 class="section-title">还没有目标</h2>
         </div>
       </div>
 
       <p class="placeholder">
-        Create your first growth goal to get started. AI will help break it down into actionable steps.
+        创建你的第一个成长目标，AI 会帮你把它拆成可执行步骤。
       </p>
     </section>
   </div>

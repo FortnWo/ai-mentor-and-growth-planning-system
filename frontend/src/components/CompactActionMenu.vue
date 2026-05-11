@@ -16,7 +16,7 @@ const props = withDefaults(
     ariaLabel?: string
   }>(),
   {
-    ariaLabel: 'Open actions',
+    ariaLabel: '打开操作菜单',
   },
 )
 

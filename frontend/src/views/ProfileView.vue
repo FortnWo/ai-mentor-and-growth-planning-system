@@ -56,7 +56,7 @@ async function loadMyProfile() {
     profile.value = data
     syncFormFromProfile(data)
   } catch {
-    error.value = 'Could not load your profile.'
+    error.value = '无法加载你的资料。'
   } finally {
     submitting.value = false
   }
@@ -76,9 +76,9 @@ async function saveProfile() {
 
     profile.value = updated
     syncFormFromProfile(updated)
-    feedback.value = 'Profile updated successfully.'
+    feedback.value = '资料更新成功。'
   } catch {
-    error.value = 'Profile update failed.'
+    error.value = '资料更新失败。'
   } finally {
     submitting.value = false
   }
@@ -88,7 +88,7 @@ async function updatePassword() {
   clearMessages()
 
   if (!passwordForm.current_password.trim() || !passwordForm.new_password.trim()) {
-    error.value = 'Please enter both current and new password.'
+    error.value = '请输入当前密码和新密码。'
     return
   }
 
@@ -102,9 +102,9 @@ async function updatePassword() {
     profile.value = updated
     passwordForm.current_password = ''
     passwordForm.new_password = ''
-    feedback.value = 'Password changed successfully.'
+    feedback.value = '密码修改成功。'
   } catch {
-    error.value = 'Password change failed. Check your current password and password policy.'
+    error.value = '密码修改失败，请检查当前密码和密码规则。'
   } finally {
     submitting.value = false
   }
@@ -123,38 +123,38 @@ onMounted(async () => {
     <section class="page-header glass-card panel hero-frame reveal">
       <div class="title-row">
         <div>
-          <p class="page-kicker">Personal workspace</p>
-          <h1 class="page-title">My Profile</h1>
+          <p class="page-kicker">个人工作区</p>
+          <h1 class="page-title">我的资料</h1>
           <p class="page-subtitle">
-            Keep your academic details, bio, and credentials organized in a polished profile workspace.
+            在精致的资料工作区中整理你的学业信息、简介和账号凭据。
           </p>
         </div>
       </div>
 
       <div v-if="profile" class="stat-grid">
         <article class="stat-card">
-          <p class="stat-label">Username</p>
+          <p class="stat-label">用户名</p>
           <p class="stat-value">{{ profile.username }}</p>
-          <p class="stat-note">Primary login identifier</p>
+          <p class="stat-note">主要登录标识</p>
         </article>
 
         <article class="stat-card">
-          <p class="stat-label">Role</p>
+          <p class="stat-label">角色</p>
           <p class="stat-value">{{ profile.role }}</p>
-          <p class="stat-note">{{ profile.is_active ? 'Active account' : 'Disabled account' }}</p>
+          <p class="stat-note">{{ profile.is_active ? '启用账号' : '禁用账号' }}</p>
         </article>
 
         <article class="stat-card">
-          <p class="stat-label">Email</p>
+          <p class="stat-label">邮箱</p>
           <p class="stat-value">{{ profile.email }}</p>
-          <p class="stat-note">Notification channel</p>
+          <p class="stat-note">通知渠道</p>
         </article>
 
         <article class="stat-card">
-          <p class="stat-label">Last login</p>
-          <p class="stat-value">{{ profile.last_login_at ? 'Recent' : 'Never' }}</p>
+          <p class="stat-label">最近登录</p>
+          <p class="stat-value">{{ profile.last_login_at ? '近期' : '从未' }}</p>
           <p class="stat-note">
-            {{ profile.last_login_at ? new Date(profile.last_login_at).toLocaleString() : 'No login record yet' }}
+            {{ profile.last_login_at ? new Date(profile.last_login_at).toLocaleString() : '暂无登录记录' }}
           </p>
         </article>
       </div>
@@ -167,21 +167,21 @@ onMounted(async () => {
       <section v-if="profile" class="panel profile-summary reveal reveal--delay-1">
         <div class="title-row">
           <div>
-            <p class="eyebrow">Account summary</p>
-            <h2 class="section-title">Identity snapshot</h2>
+            <p class="eyebrow">账号概览</p>
+            <h2 class="section-title">身份快照</h2>
           </div>
 
           <span class="chip" :class="profile.is_active ? 'chip--active' : 'chip--warn'">
-            {{ profile.is_active ? 'Active' : 'Disabled' }}
+            {{ profile.is_active ? '启用' : '禁用' }}
           </span>
         </div>
 
         <div class="summary-list">
-          <p><strong>Username</strong><span>{{ profile.username }}</span></p>
-          <p><strong>Email</strong><span>{{ profile.email }}</span></p>
-          <p><strong>Role</strong><span>{{ profile.role }}</span></p>
+          <p><strong>用户名</strong><span>{{ profile.username }}</span></p>
+          <p><strong>邮箱</strong><span>{{ profile.email }}</span></p>
+          <p><strong>角色</strong><span>{{ profile.role }}</span></p>
           <p v-if="profile.last_login_at">
-            <strong>Last Login</strong><span>{{ new Date(profile.last_login_at).toLocaleString() }}</span>
+            <strong>上次登录</strong><span>{{ new Date(profile.last_login_at).toLocaleString() }}</span>
           </p>
         </div>
       </section>
@@ -189,56 +189,56 @@ onMounted(async () => {
       <form class="panel form-card reveal reveal--delay-2" @submit.prevent="saveProfile">
         <div class="title-row">
           <div>
-            <p class="eyebrow">Profile details</p>
-            <h2 class="section-title">Edit your public profile</h2>
+            <p class="eyebrow">资料详情</p>
+            <h2 class="section-title">编辑你的公开资料</h2>
           </div>
         </div>
 
         <label class="field">
-          <span class="label">Full Name</span>
+          <span class="label">姓名</span>
           <input v-model="profileForm.full_name" class="input" />
         </label>
 
         <label class="field">
-          <span class="label">Major</span>
+          <span class="label">专业</span>
           <input v-model="profileForm.major" class="input" />
         </label>
 
         <label class="field">
-          <span class="label">Year Of Study</span>
+          <span class="label">年级</span>
           <input v-model="profileForm.year_of_study" class="input" type="number" min="1" max="12" />
         </label>
 
         <label class="field span-2">
-          <span class="label">Bio</span>
+          <span class="label">简介</span>
           <textarea v-model="profileForm.bio" class="textarea" rows="4"></textarea>
         </label>
 
         <div class="actions span-2">
-          <button class="button button--primary" :disabled="submitting" type="submit">Save Profile</button>
+          <button class="button button--primary" :disabled="submitting" type="submit">保存资料</button>
         </div>
       </form>
 
       <form class="panel form-card reveal reveal--delay-3" @submit.prevent="updatePassword">
         <div class="title-row">
           <div>
-            <p class="eyebrow">Security</p>
-            <h2 class="section-title">Change password</h2>
+            <p class="eyebrow">安全</p>
+            <h2 class="section-title">修改密码</h2>
           </div>
         </div>
 
         <label class="field">
-          <span class="label">Current Password</span>
+          <span class="label">当前密码</span>
           <input v-model="passwordForm.current_password" class="input" type="password" />
         </label>
 
         <label class="field">
-          <span class="label">New Password</span>
+          <span class="label">新密码</span>
           <input v-model="passwordForm.new_password" class="input" type="password" />
         </label>
 
         <div class="actions span-2">
-          <button class="button button--ghost" :disabled="submitting" type="submit">Update Password</button>
+          <button class="button button--ghost" :disabled="submitting" type="submit">更新密码</button>
         </div>
       </form>
     </div>

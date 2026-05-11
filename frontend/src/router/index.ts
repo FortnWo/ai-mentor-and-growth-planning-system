@@ -52,6 +52,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/PlanView.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/growth',
+    name: 'GrowthRecords',
+    component: () => import('../views/GrowthRecordsView.vue'),
+    meta: { requiresAuth: true },
+  },
 ]
 
 const router = createRouter({

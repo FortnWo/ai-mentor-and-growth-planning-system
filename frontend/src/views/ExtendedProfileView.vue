@@ -72,7 +72,7 @@ async function loadProfile() {
         profile.value = data
         syncForm(data)
     } catch {
-        error.value = 'Could not load your extended profile.'
+        error.value = '无法加载你的扩展画像。'
     } finally {
         loading.value = false
     }
@@ -94,9 +94,9 @@ async function saveProfile() {
 
         profile.value = updated
         syncForm(updated)
-        feedback.value = 'Extended profile updated successfully.'
+        feedback.value = '扩展画像更新成功。'
     } catch {
-        error.value = 'Could not update extended profile.'
+        error.value = '无法更新扩展画像。'
     } finally {
         saving.value = false
     }
@@ -111,9 +111,9 @@ async function refreshFromChat() {
         profile.value = result.profile
         extracted.value = result.extracted
         syncForm(result.profile)
-        feedback.value = 'Profile refreshed from chat history.'
+        feedback.value = '已根据聊天历史刷新画像。'
     } catch {
-        error.value = 'Chat extraction failed. Please check your chat history or try again later.'
+        error.value = '聊天抽取失败，请检查聊天记录后重试。'
     } finally {
         refreshing.value = false
     }
@@ -133,54 +133,52 @@ onMounted(async () => {
         <section class="page-header glass-card panel hero-frame reveal">
             <div class="title-row">
                 <div>
-                    <p class="page-kicker">Structured profile</p>
-                    <h1 class="page-title">Extended Profile</h1>
+                    <p class="page-kicker">结构化画像</p>
+                    <h1 class="page-title">扩展画像</h1>
                     <p class="page-subtitle">
-                        Maintain a structured profile of interests, skills, goals, and preferences. You can edit
-                        manually and
-                        trigger AI extraction from recent chats.
+                        维护一个关于兴趣、技能、目标和偏好的结构化画像。你可以手动编辑，也可以触发 AI 从最近聊天中抽取信息。
                     </p>
                 </div>
 
                 <div class="hero-actions">
                     <button class="button button--ghost" :disabled="refreshing || loading" type="button"
                         @click="loadProfile">
-                        Reload
+                        重新加载
                     </button>
                     <button class="button button--primary" :disabled="refreshing || loading" type="button"
                         @click="refreshFromChat">
-                        Refresh From Chat
+                        从聊天刷新
                     </button>
                 </div>
             </div>
 
             <div v-if="profile" class="stat-grid">
                 <article class="stat-card">
-                    <p class="stat-label">Interests</p>
+                    <p class="stat-label">兴趣</p>
                     <p class="stat-value">{{ profile.interests.length }}</p>
-                    <p class="stat-note">Current structured entries</p>
+                    <p class="stat-note">当前结构化条目</p>
                 </article>
 
                 <article class="stat-card">
-                    <p class="stat-label">Skills</p>
+                    <p class="stat-label">技能</p>
                     <p class="stat-value">{{ profile.skills.length }}</p>
-                    <p class="stat-note">Detected or manually curated</p>
+                    <p class="stat-note">自动识别或手动整理</p>
                 </article>
 
                 <article class="stat-card">
-                    <p class="stat-label">Goals</p>
+                    <p class="stat-label">目标</p>
                     <p class="stat-value">{{ profile.goals.length }}</p>
-                    <p class="stat-note">Action oriented growth targets</p>
+                    <p class="stat-note">面向行动的成长目标</p>
                 </article>
 
                 <article class="stat-card">
-                    <p class="stat-label">Last extraction</p>
-                    <p class="stat-value">{{ profile.last_extracted_at ? 'Updated' : 'Never' }}</p>
+                                        <p class="stat-label">最近抽取</p>
+                                        <p class="stat-value">{{ profile.last_extracted_at ? '已更新' : '从未' }}</p>
                     <p class="stat-note">
                         {{
                             profile.last_extracted_at
                                 ? new Date(profile.last_extracted_at).toLocaleString()
-                                : 'No automatic extraction yet'
+                                                            : '暂无自动抽取'
                         }}
                     </p>
                 </article>
@@ -194,94 +192,91 @@ onMounted(async () => {
             <form class="panel form-card reveal reveal--delay-1" @submit.prevent="saveProfile">
                 <div class="title-row">
                     <div>
-                        <p class="eyebrow">Manual edit</p>
-                        <h2 class="section-title">Edit profile fields</h2>
+                        <p class="eyebrow">手动编辑</p>
+                        <h2 class="section-title">编辑画像字段</h2>
                     </div>
                 </div>
 
                 <label class="field">
-                    <span class="label">Interests</span>
+                    <span class="label">兴趣</span>
                     <textarea v-model="form.interests" class="textarea" rows="4"
-                        placeholder="One item per line"></textarea>
+                        placeholder="每行一项"></textarea>
                 </label>
 
                 <label class="field">
-                    <span class="label">Skills</span>
+                    <span class="label">技能</span>
                     <textarea v-model="form.skills" class="textarea" rows="4"
-                        placeholder="One item per line"></textarea>
+                        placeholder="每行一项"></textarea>
                 </label>
 
                 <label class="field">
-                    <span class="label">Goals</span>
-                    <textarea v-model="form.goals" class="textarea" rows="4" placeholder="One item per line"></textarea>
+                    <span class="label">目标</span>
+                    <textarea v-model="form.goals" class="textarea" rows="4" placeholder="每行一项"></textarea>
                 </label>
 
                 <label class="field">
-                    <span class="label">Study Habits</span>
+                    <span class="label">学习习惯</span>
                     <textarea v-model="form.study_habits" class="textarea" rows="4"
-                        placeholder="One item per line"></textarea>
+                        placeholder="每行一项"></textarea>
                 </label>
 
                 <label class="field">
-                    <span class="label">Personality</span>
+                    <span class="label">性格</span>
                     <textarea v-model="form.personality" class="textarea" rows="4"
-                        placeholder="One item per line"></textarea>
+                        placeholder="每行一项"></textarea>
                 </label>
 
                 <label class="field">
-                    <span class="label">Preferences</span>
+                    <span class="label">偏好</span>
                     <textarea v-model="form.preferences" class="textarea" rows="4"
-                        placeholder="One item per line"></textarea>
+                        placeholder="每行一项"></textarea>
                 </label>
 
                 <div class="actions span-2">
-                    <button class="button button--primary" :disabled="saving || loading" type="submit">Save
-                        Profile</button>
+                    <button class="button button--primary" :disabled="saving || loading" type="submit">保存画像</button>
                 </div>
             </form>
 
             <section class="panel profile-summary reveal reveal--delay-2">
                 <div class="title-row">
                     <div>
-                        <p class="eyebrow">Extraction insight</p>
-                        <h2 class="section-title">Latest extracted increment</h2>
+                        <p class="eyebrow">抽取洞察</p>
+                        <h2 class="section-title">最新抽取增量</h2>
                     </div>
                 </div>
 
                 <p class="muted">
-                    Trigger “Refresh From Chat” to re-run profile extraction from your recent conversation history. New
-                    items are
-                    merged without removing existing entries.
+                    点击“从聊天刷新”即可基于最近的对话历史重新抽取画像。新增条目会合并，不会删除已有内容。
                 </p>
 
                 <div v-if="extracted" class="summary-list">
                     <p>
-                        <strong>Interests</strong>
-                        <span>{{ extracted.interests.join(', ') || 'None' }}</span>
+                        <strong>兴趣</strong>
+                        <span>{{ extracted.interests.join(', ') || '无' }}</span>
                     </p>
                     <p>
-                        <strong>Skills</strong>
-                        <span>{{ extracted.skills.join(', ') || 'None' }}</span>
+                        <strong>技能</strong>
+                        <span>{{ extracted.skills.join(', ') || '无' }}</span>
                     </p>
                     <p>
-                        <strong>Goals</strong>
-                        <span>{{ extracted.goals.join(', ') || 'None' }}</span>
+                        <strong>目标</strong>
+                        <span>{{ extracted.goals.join(', ') || '无' }}</span>
                     </p>
                     <p>
-                        <strong>Study Habits</strong>
-                        <span>{{ extracted.study_habits.join(', ') || 'None' }}</span>
+                        <strong>学习习惯</strong>
+                        <span>{{ extracted.study_habits.join(', ') || '无' }}</span>
                     </p>
                     <p>
-                        <strong>Personality</strong>
-                        <span>{{ extracted.personality.join(', ') || 'None' }}</span>
+                        <strong>性格</strong>
+                        <span>{{ extracted.personality.join(', ') || '无' }}</span>
                     </p>
                     <p>
-                        <strong>Preferences</strong>
-                        <span>{{ extracted.preferences.join(', ') || 'None' }}</span>
+                        <strong>偏好</strong>
+                        <span>{{ extracted.preferences.join(', ') || '无' }}</span>
                     </p>
                 </div>
 
-                <p v-else class="muted">No extracted increment yet.</p>
+                <p v-else class="muted">暂时没有抽取结果。</p>
             </section>
         </div>
     </div>

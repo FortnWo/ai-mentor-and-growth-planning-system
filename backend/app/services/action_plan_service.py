@@ -2,6 +2,7 @@ import json
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,8 @@ from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanIt
 from app.models.goal import Goal, GoalBreakdown
 from app.models.extended_profile import UserExtendedProfile
 from app.schemas.action_plan import ActionPlanDetailRead
+from app.models.growth_record import GrowthRecordType, GrowthRecordSource
+from app.services.growth_record_service import create_growth_record
 
 logger = logging.getLogger(__name__)
 
@@ -237,20 +240,37 @@ def _upsert_action_plan(
         breakdown_ref = item_data.get("breakdown_ref")
         breakdown_id = _resolve_breakdown_ref(breakdown_ref, breakdown_lookup)
 
-        db.add(
-            ActionPlanItem(
-                plan_id=plan.id,
-                breakdown_id=breakdown_id,
-                title=item_data["title"],
-                description=item_data.get("description"),
-                frequency=_normalize_frequency(item_data.get("frequency")),
-                schedule=_normalize_text(item_data.get("schedule")),
-                status=_normalize_status(item_data.get("status"), default=ActionPlanStatus.PENDING.value),
-                start_date=_normalize_date(item_data.get("start_date")),
-                due_date=_normalize_date(item_data.get("due_date")),
-                sequence=item_data["sequence"],
-            )
+        item_status = _normalize_status(item_data.get("status"), default=ActionPlanStatus.PENDING.value)
+
+        new_item = ActionPlanItem(
+            plan_id=plan.id,
+            breakdown_id=breakdown_id,
+            title=item_data["title"],
+            description=item_data.get("description"),
+            frequency=_normalize_frequency(item_data.get("frequency")),
+            schedule=_normalize_text(item_data.get("schedule")),
+            status=item_status,
+            start_date=_normalize_date(item_data.get("start_date")),
+            due_date=_normalize_date(item_data.get("due_date")),
+            sequence=item_data["sequence"],
         )
+
+        db.add(new_item)
+
+        if item_status == ActionPlanStatus.COMPLETED.value:
+            create_growth_record(
+                db,
+                goal.user_id,
+                title=new_item.title,
+                summary=new_item.description,
+                content=f"自动回写：来自行动计划 {plan.id} 项目",
+                record_type=GrowthRecordType.ACTION_PLAN.value,
+                source_type=GrowthRecordSource.ACTION_PLAN.value,
+                source_ref_id=None,
+                occurred_at=datetime.utcnow(),
+                commit=False,
+                refresh=False,
+            )
 
     db.commit()
     db.refresh(plan)

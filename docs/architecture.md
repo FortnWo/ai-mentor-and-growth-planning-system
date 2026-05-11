@@ -1,15 +1,15 @@
-# Architecture Overview
+# 架构总览
 
-## Technology Stack
+## 技术栈
 
-| Layer | Technology |
+| 层 | 技术 |
 | --- | --- |
-| Frontend | Vue 3, TypeScript, Vue Router, Axios, Vite |
-| Backend | FastAPI, SQLAlchemy 2, Pydantic v2, Passlib, PyJWT |
-| Database | MySQL 8 |
-| AI Integration | OpenAI SDK with provider-compatible base URL |
+| 前端 | Vue 3、TypeScript、Vue Router、Axios、Vite |
+| 后端 | FastAPI、SQLAlchemy 2、Pydantic v2、Passlib、PyJWT |
+| 数据库 | MySQL 8 |
+| AI 集成 | 使用 OpenAI SDK 和兼容提供方基础地址 |
 
-## High-Level Design
+## 高层设计
 
 ```text
 Vue SPA
@@ -22,83 +22,83 @@ Vue SPA
     -> MySQL
 ```
 
-The backend follows a layered approach:
+后端采用分层设计：
 
-- Routers: request parsing, response models, HTTP error mapping.
-- Services: business rules, validation, authorization-sensitive logic.
-- Models: persistence entities.
-- Schemas: request/response contracts.
-- Core: config, db wiring, JWT/password utilities, bootstrap initialization.
+- Routers：请求解析、响应模型、HTTP 错误映射。
+- Services：业务规则、校验、与权限敏感逻辑。
+- Models：持久化实体。
+- Schemas：请求 / 响应契约。
+- Core：配置、数据库连接、JWT / 密码工具、启动初始化。
 
-## Backend Modules
+## 后端模块
 
 ### Core
 
-- `app/core/config.py`: environment-driven settings.
-- `app/core/database.py`: engine, session, declarative base.
-- `app/core/security.py`: password hashing, JWT create/decode, auth dependencies.
-- `app/core/bootstrap.py`: optional startup admin bootstrap.
-- `app/core/ws_manager.py`: in-memory websocket connection manager (per-user connections).
+- `app/core/config.py`：由环境变量驱动的配置。
+- `app/core/database.py`：引擎、会话、声明式基类。
+- `app/core/security.py`：密码哈希、JWT 创建 / 解析、认证依赖。
+- `app/core/bootstrap.py`：可选的启动管理员初始化。
+- `app/core/ws_manager.py`：内存型 WebSocket 连接管理器（按用户连接）。
 
 ### Services
 
-- `app/services/auth_service.py`: login flow and token response assembly.
-- `app/services/user_service.py`: user CRUD, profile update, password update, admin delegation logic.
-- `app/services/chat_service.py`: session/message persistence, background LLM interaction, message status serialization, and websocket notifications.
+- `app/services/auth_service.py`：登录流程与令牌响应组装。
+- `app/services/user_service.py`：用户增删改查、资料更新、密码更新、管理员委托逻辑。
+- `app/services/chat_service.py`：会话 / 消息持久化、后台 LLM 交互、消息状态序列化与 WebSocket 通知。
 
 ### Routers
 
-- `app/routers/health.py`: health endpoint.
-- `app/routers/auth.py`: login and current-user endpoint.
-- `app/routers/profile.py`: current-user profile endpoints.
-- `app/routers/user.py`: admin-only user management and delegation endpoints.
-- `app/routers/chat.py`: chat send/list endpoints (JWT-bound user identity).
-- `app/routers/ws.py`: websocket endpoint for real-time chat updates.
+- `app/routers/health.py`：健康检查接口。
+- `app/routers/auth.py`：登录与当前用户接口。
+- `app/routers/profile.py`：当前用户资料接口。
+- `app/routers/user.py`：管理员专属的用户管理与委托接口。
+- `app/routers/chat.py`：聊天发送 / 列表接口（绑定 JWT 用户身份）。
+- `app/routers/ws.py`：用于实时聊天更新的 WebSocket 接口。
 
-## Chat Delivery Flow
+## 聊天交付流程
 
-1. `POST /chat` persists the user message synchronously and returns immediately.
-2. A background task creates an assistant placeholder (`pending`) and starts heartbeat push events.
-3. LLM generation completes in background and updates the same assistant row to final content.
-4. Backend pushes `new_message` via websocket; frontend replaces placeholder.
+1. `POST /chat` 同步持久化用户消息并立即返回。
+2. 后台任务创建助手占位消息（`pending`）并启动心跳推送。
+3. LLM 在后台生成完成后，会更新同一条助手记录为最终内容。
+4. 后端通过 WebSocket 推送 `new_message`，前端替换占位内容。
 
-Message status semantics:
+消息状态语义：
 
-- `pending`: unresolved assistant placeholder.
-- `completed`: assistant response generated successfully.
-- `failed`: assistant generation failed and fallback error text is stored.
+- `pending`：尚未完成的助手占位消息。
+- `completed`：助手回复生成成功。
+- `failed`：助手生成失败，已保存兜底错误文本。
 
-## Authentication and RBAC
+## 认证与 RBAC
 
-- JWT bearer authentication for protected endpoints.
-- User roles:
-    - `user`: regular student account.
-    - `admin`: privileged account.
-- Admin permission model:
-    - `full`: unrestricted admin actions.
-    - `limited`: scoped by permission keys.
-- Permission keys used by admin routes:
-    - `user.read`
-    - `user.create`
-    - `user.update`
-    - `user.delete`
-    - `admin.grant`
-- Delegation can be configured with optional expiry timestamp.
+- 受保护接口使用 JWT Bearer 认证。
+- 用户角色：
+  - `user`：普通学生账号。
+  - `admin`：管理员账号。
+- 管理员权限模型：
+  - `full`：不受限制的管理员操作。
+  - `limited`：由权限键限定范围。
+- 管理员路由使用的权限键：
+  - `user.read`
+  - `user.create`
+  - `user.update`
+  - `user.delete`
+  - `admin.grant`
+- 委托权限可配置可选过期时间。
 
-## Domain Rules
+## 领域规则
 
-- Student account usernames must match a 10-digit ID pattern.
-- Student accounts cannot be created with admin permissions.
-- Limited admins must have at least one permission key.
+- 学生账号用户名必须匹配 10 位数字学号。
+- 学生账号不能创建为管理员权限。
+- 有限管理员至少需要一个权限键。
 
-## API Surface
+## 接口面
 
-### Public
+### 公共接口
 
 - `GET /ping`
 - `POST /auth/login`
 
-### Authenticated
+### 登录后接口
 
 - `GET /auth/me`
 - `GET /profile/me`
@@ -108,11 +108,11 @@ Message status semantics:
 - `GET /chat/sessions`
 - `GET /chat/{session_id}/messages`
 
-### Realtime
+### 实时接口
 
 - `WS /ws?token=<jwt>`
 
-### Admin-only
+### 管理员专属接口
 
 - `GET /admin/users`
 - `POST /admin/users`
@@ -122,19 +122,19 @@ Message status semantics:
 - `PATCH /admin/users/{user_id}/admin-access`
 - `DELETE /admin/users/{user_id}/admin-access`
 
-## Frontend Routing and Guards
+## 前端路由与守卫
 
-- `/login`: guest-only.
-- `/chat`, `/profile`, `/plan`: requires login.
-- `/admin/users`: requires login and admin role.
-- Route guard restores auth state from local storage and validates `/auth/me` when needed.
+- `/login`：仅游客可访问。
+- `/chat`、`/profile`、`/plan`：需要登录。
+- `/admin/users`：需要登录且具备管理员角色。
+- 路由守卫会从本地存储恢复认证状态，并在需要时校验 `/auth/me`。
 
-## Startup Lifecycle
+## 启动生命周期
 
-FastAPI uses a lifespan hook to:
+FastAPI 使用 lifespan 钩子来：
 
-1. create database tables (if missing),
-2. run bootstrap admin creation if bootstrap env vars are configured,
-3. attach the main asyncio event loop to websocket manager for cross-thread push scheduling.
+1. 创建数据库表（如果缺失），
+2. 在配置了初始化环境变量时创建 bootstrap 管理员，
+3. 将主 asyncio 事件循环挂到 websocket 管理器上，以便跨线程调度推送。
 
-This keeps local/dev startup consistent and avoids deprecated startup event hooks.
+这能保持本地 / 开发启动一致，并避免使用已弃用的 startup 事件钩子。

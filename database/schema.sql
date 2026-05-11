@@ -155,3 +155,62 @@ CREATE TABLE IF NOT EXISTS action_plan_items (
         INDEX idx_action_plan_items_breakdown (breakdown_id),
         INDEX idx_action_plan_items_sequence (sequence)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+-- -------------------------------------------------------
+-- Growth records
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS growth_records (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    summary TEXT NULL,
+    content TEXT NULL,
+    record_type ENUM('manual', 'action_plan', 'milestone') NOT NULL DEFAULT 'manual',
+    source_type ENUM('manual', 'action_plan', 'milestone') NOT NULL DEFAULT 'manual',
+    source_ref_id INT UNSIGNED NULL,
+    occurred_at DATETIME NULL,
+    record_date VARCHAR(10) NULL,
+    emotion VARCHAR(64) NULL,
+    score INT NULL,
+    idempotency_key VARCHAR(128) NULL,
+    ai_summary TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    CONSTRAINT fk_growth_records_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_growth_records_user (user_id),
+    INDEX idx_growth_records_source_ref_id (source_ref_id),
+    INDEX idx_growth_records_occurred_at (occurred_at),
+    INDEX idx_growth_records_record_date (record_date),
+    INDEX idx_growth_records_idempotency_key (idempotency_key)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+-- -------------------------------------------------------
+-- Growth daily aggregates
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS growth_daily_aggregates (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    record_date DATE NOT NULL,
+    completed_count INT NOT NULL DEFAULT 0,
+    reflection_count INT NOT NULL DEFAULT 0,
+    milestone_count INT NOT NULL DEFAULT 0,
+    growth_score INT NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_growth_daily_aggregates_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_growth_daily_aggregates_user_date (user_id, record_date),
+    INDEX idx_growth_daily_aggregates_user (user_id),
+    INDEX idx_growth_daily_aggregates_record_date (record_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+-- -------------------------------------------------------
+-- Growth summaries
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS growth_summaries (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    summary TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_growth_summaries_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_growth_summaries_user (user_id),
+    INDEX idx_growth_summaries_date_range (start_date, end_date)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
