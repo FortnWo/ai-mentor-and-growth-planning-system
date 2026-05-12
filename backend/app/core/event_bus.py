@@ -6,7 +6,6 @@ from threading import RLock
 from typing import Callable
 import json
 
-from app.core.database import SessionLocal
 from app.core.domain_events import DomainEvent, build_domain_event
 
 
@@ -88,9 +87,10 @@ class EventBus:
 
     @staticmethod
     def _persist_event(event: DomainEvent) -> None:
+        import app.core.database as database_module
         from app.models.domain_event import DomainEventRecord
 
-        db = SessionLocal()
+        db = database_module.SessionLocal()
         try:
             db.add(
                 DomainEventRecord(

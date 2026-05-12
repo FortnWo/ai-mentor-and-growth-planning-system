@@ -3,11 +3,15 @@ from __future__ import annotations
 import logging
 
 from app.core.config import settings
-from app.core.database import SessionLocal
 from app.core.domain_events import DomainEvent, DomainEventName
 from app.core.event_bus import event_bus
 from app.schemas.goal import GoalCreate
-from app.services import action_plan_service, chat_service, extended_profile_service, goal_service
+import app.core.database as database_module
+import app.services.breakdown_service as breakdown_service
+import app.services.chat_service as chat_service
+import app.services.goal_service as goal_service
+import app.services.plan_service as plan_service
+import app.services.profile_service as profile_service
 
 
 logger = logging.getLogger("ai_mentor.orchestrator")
@@ -68,20 +72,20 @@ def _on_chat_message(event: DomainEvent) -> None:
         logger.warning("Skip chat event without valid session_id trace_id=%s", event.trace_id)
         return
 
-    db = SessionLocal()
+    db = database_module.SessionLocal()
     try:
-        messages = extended_profile_service.list_recent_messages_for_session(
+        messages = profile_service.list_recent_messages_for_session(
             db,
             session_id=session_id,
             limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
         )
-        extraction_input = extended_profile_service.build_extraction_input(messages)
+        extraction_input = profile_service.build_profile_extraction_input(messages)
         if not extraction_input:
             return
 
         raw_result = chat_service.build_profile_extraction_response(extraction_input)
-        extraction_result = extended_profile_service.parse_extraction_result(raw_result)
-        profile = extended_profile_service.apply_extraction_result_for_user(
+        extraction_result = profile_service.parse_profile_extraction_result(raw_result)
+        profile = profile_service.apply_profile_extraction_result(
             db,
             user_id=event.user_id,
             result=extraction_result,
@@ -107,7 +111,7 @@ def _on_profile_updated(event: DomainEvent) -> None:
     if not goal_titles:
         return
 
-    db = SessionLocal()
+    db = database_module.SessionLocal()
     try:
         existing_goals = goal_service.list_goals_for_user(db, event.user_id)
         existing_titles = {
@@ -152,22 +156,22 @@ def _on_goal_detected(event: DomainEvent) -> None:
         logger.warning("Skip goal detection event without valid goal_id trace_id=%s", event.trace_id)
         return
 
-    db = SessionLocal()
+    db = database_module.SessionLocal()
     try:
         goal = goal_service.get_goal_for_user(db, event.user_id, goal_id)
         if not goal:
             logger.warning("Goal not found for breakdown goal_id=%s user_id=%s", goal_id, event.user_id)
             return
 
-        user_profile = extended_profile_service.get_profile_for_user(db, event.user_id)
+        user_profile = profile_service.get_user_profile_context(db, event.user_id)
         prompt = _build_goal_breakdown_prompt(goal.title, goal.description, user_profile)
         raw_response = chat_service.build_goal_breakdown_response(prompt)
-        breakdown_data = goal_service.parse_goal_breakdown_response(raw_response)
+        breakdown_data = breakdown_service.parse_breakdown_response(raw_response)
         if not breakdown_data:
             logger.warning("Failed to parse goal breakdown for goal_id=%s", goal_id)
             return
 
-        success = goal_service.apply_goal_breakdown_for_user(db, event.user_id, goal_id, breakdown_data)
+        success = breakdown_service.apply_breakdown_for_goal(db, event.user_id, goal_id, breakdown_data)
         if not success:
             logger.warning("Failed to apply goal breakdown for goal_id=%s", goal_id)
             return
@@ -189,9 +193,9 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
         logger.warning("Skip goal breakdown event without valid goal_id trace_id=%s", event.trace_id)
         return
 
-    db = SessionLocal()
+    db = database_module.SessionLocal()
     try:
-        plan = action_plan_service.prepare_action_plan_for_goal(
+        plan = plan_service.prepare_plan_for_goal(
             db,
             event.user_id,
             goal_id,
@@ -202,9 +206,9 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
             return
 
         try:
-            action_plan_service.generate_action_plan_with_retry(db, event.user_id, plan.id)
+            plan_service.generate_plan_with_retry(db, event.user_id, plan.id)
         except (RuntimeError, ValueError) as exc:
-            action_plan_service.mark_action_plan_failed(db, plan.id, str(exc))
+            plan_service.mark_plan_failed(db, plan.id, str(exc))
             logger.warning(
                 "Action plan generation failed plan_id=%s goal_id=%s user_id=%s error=%s",
                 plan.id,
@@ -213,7 +217,7 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
                 exc,
             )
 
-        refreshed = action_plan_service.get_action_plan_for_user(db, event.user_id, plan.id)
+        refreshed = plan_service.get_plan_for_user(db, event.user_id, plan.id)
         _publish_followup_event(
             DomainEventName.ON_ACTION_GENERATED,
             source_event=event,

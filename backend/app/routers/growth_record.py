@@ -7,16 +7,15 @@ from app.core.event_bus import event_bus
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.growth_record import GrowthRecordCreate, GrowthRecordRead, GrowthRecordListItem, GrowthRecordStats
-from app.services import growth_record_service
 from app.schemas.growth_summary import GrowthSummaryCreate, GrowthSummaryRead
-from app.services import growth_summary_service
+from app.services import growth_service
 
 router = APIRouter(prefix="/growth-records", tags=["growth-records"])
 
 
 @router.post("", response_model=GrowthRecordRead, status_code=status.HTTP_201_CREATED)
 def create_record(payload: GrowthRecordCreate, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    record = growth_record_service.create_growth_record(
+    record = growth_service.create_growth_record(
         db,
         current_user.id,
         title=payload.title,
@@ -43,7 +42,7 @@ def create_record(payload: GrowthRecordCreate, background_tasks: BackgroundTasks
     )
     # schedule background summary generation (best-effort, non-blocking)
     try:
-        background_tasks.add_task(growth_record_service.process_record_summary_background, record.id)
+        background_tasks.add_task(growth_service.process_record_summary_background, record.id)
     except Exception:
         pass
     return GrowthRecordRead.model_validate(record)
@@ -60,7 +59,7 @@ def list_records(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    total, items = growth_record_service.list_growth_records(
+    _total, items = growth_service.list_growth_records(
         db,
         current_user.id,
         limit=limit,
@@ -75,7 +74,7 @@ def list_records(
 
 @router.get("/stats", response_model=GrowthRecordStats)
 def stats(start_date: str | None = None, end_date: str | None = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    data = growth_record_service.stats_for_user(db, current_user.id, start_date=start_date, end_date=end_date)
+    data = growth_service.get_growth_stats(db, current_user.id, start_date=start_date, end_date=end_date)
     return GrowthRecordStats.model_validate(data)
 
 
@@ -88,7 +87,7 @@ def generate_weekly_summary(payload: GrowthSummaryCreate, background_tasks: Back
             import app.core.database as database_module
             db_local = database_module.SessionLocal()
             try:
-                growth_summary_service.create_weekly_summary(db_local, u_id, s, e)
+                growth_service.create_weekly_summary(db_local, u_id, s, e)
             finally:
                 db_local.close()
 
@@ -102,7 +101,7 @@ def generate_weekly_summary(payload: GrowthSummaryCreate, background_tasks: Back
 
 @router.get("/{record_id}", response_model=GrowthRecordRead)
 def get_record(record_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    record = growth_record_service.get_growth_record(db, current_user.id, record_id)
+    record = growth_service.get_growth_record(db, current_user.id, record_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Growth record not found")
     return GrowthRecordRead.model_validate(record)
