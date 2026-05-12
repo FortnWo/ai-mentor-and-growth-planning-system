@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.domain_events import DomainEventName
+from app.core.event_bus import event_bus
 from app.core.security import get_current_user
 from app.models.user import User
 from app.schemas.growth_record import GrowthRecordCreate, GrowthRecordRead, GrowthRecordListItem, GrowthRecordStats
@@ -28,6 +30,16 @@ def create_record(payload: GrowthRecordCreate, background_tasks: BackgroundTasks
         emotion=payload.emotion,
         score=payload.score,
         idempotency_key=payload.idempotency_key,
+    )
+    event_bus.publish(
+        event_name=DomainEventName.ON_GROWTH_UPDATED.value,
+        user_id=current_user.id,
+        payload={
+            "record_id": record.id,
+            "record_type": record.record_type,
+            "source_type": record.source_type,
+        },
+        fail_fast=False,
     )
     # schedule background summary generation (best-effort, non-blocking)
     try:

@@ -1,11 +1,12 @@
 import logging
-from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.domain_events import DomainEventName
+from app.core.event_bus import event_bus
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.schemas.chat import ChatMessageRead, ChatSendRequest, MessageDeliveryStatus
-from app.services import extended_profile_service
+from app.services import ai_service, extended_profile_service
 
 import asyncio
 import threading
@@ -15,43 +16,9 @@ ASSISTANT_FAILURE_MESSAGE = "(The assistant failed to respond.)"
 logger = logging.getLogger(__name__)
 
 
-def _get_ai_client() -> OpenAI:
-    if not settings.LLM_API_KEY:
-        raise RuntimeError("LLM_API_KEY is not configured")
-    if not settings.LLM_API_BASE_URL:
-        raise RuntimeError("LLM_API_BASE_URL is not configured")
-
-    return OpenAI(
-        base_url=settings.LLM_API_BASE_URL,
-        api_key=settings.LLM_API_KEY,
-    )
-
-
 def _extract_response_text(response) -> str:
-    output_text = getattr(response, "output_text", None)
-    if isinstance(output_text, str) and output_text.strip():
-        return output_text.strip()
-
-    output = getattr(response, "output", None) or []
-    chunks: list[str] = []
-
-    for item in output:
-        if getattr(item, "type", None) != "message":
-            continue
-
-        content_items = getattr(item, "content", None) or []
-        for content_item in content_items:
-            if getattr(content_item, "type", None) != "output_text":
-                continue
-
-            text = getattr(content_item, "text", None)
-            if isinstance(text, str) and text.strip():
-                chunks.append(text.strip())
-
-    if chunks:
-        return "\n".join(chunks).strip()
-
-    raise RuntimeError("AI response did not contain any text content")
+    # compatibility shim: keep this function for existing tests/imports.
+    return ai_service.extract_response_text(response)
 
 
 def _role_to_value(role: MessageRole | str) -> str:
@@ -180,41 +147,11 @@ def suggest_session_title(message: str) -> str:
 
 
 def build_ai_response(message: str, *, instructions: str | None = None) -> str:
-    try:
-        client = _get_ai_client()
-        if not settings.LLM_MODEL:
-            raise RuntimeError("LLM_MODEL is not configured")
-        instr = instructions if instructions is not None else (settings.LLM_SYSTEM_PROMPT or None)
-        response = client.responses.create(
-            model=settings.LLM_MODEL,
-            instructions=instr,
-            input=message.strip(),
-        )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"AI provider request failed: {exc}") from exc
-
-    return _extract_response_text(response)
+    return ai_service.build_chat_response(message, instructions=instructions)
 
 
 def build_profile_extraction_response(message: str) -> str:
-    try:
-        client = _get_ai_client()
-        if not settings.LLM_MODEL:
-            raise RuntimeError("LLM_MODEL is not configured")
-
-        response = client.responses.create(
-            model=settings.LLM_MODEL,
-            instructions=settings.PROFILE_EXTRACTION_SYSTEM_PROMPT,
-            input=message.strip(),
-        )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"AI profile extraction request failed: {exc}") from exc
-
-    return _extract_response_text(response)
+    return ai_service.build_profile_extraction_response(message)
 
 
 def build_goal_breakdown_response(message: str) -> str:
@@ -223,22 +160,7 @@ def build_goal_breakdown_response(message: str) -> str:
     Input: structured prompt containing user goal and optional context.
     Output: raw AI response text containing JSON breakdown structure.
     """
-    try:
-        client = _get_ai_client()
-        if not settings.LLM_MODEL:
-            raise RuntimeError("LLM_MODEL is not configured")
-
-        response = client.responses.create(
-            model=settings.LLM_MODEL,
-            instructions=settings.GOAL_BREAKDOWN_SYSTEM_PROMPT,
-            input=message.strip(),
-        )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"AI goal breakdown request failed: {exc}") from exc
-
-    return _extract_response_text(response)
+    return ai_service.build_goal_breakdown_response(message)
 
 
 def build_action_plan_response(message: str) -> str:
@@ -247,22 +169,7 @@ def build_action_plan_response(message: str) -> str:
     Input: structured prompt containing goal, breakdowns, and optional profile context.
     Output: raw AI response text containing strict JSON action plan structure.
     """
-    try:
-        client = _get_ai_client()
-        if not settings.LLM_MODEL:
-            raise RuntimeError("LLM_MODEL is not configured")
-
-        response = client.responses.create(
-            model=settings.LLM_MODEL,
-            instructions=settings.ACTION_PLAN_SYSTEM_PROMPT,
-            input=message.strip(),
-        )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"AI action plan request failed: {exc}") from exc
-
-    return _extract_response_text(response)
+    return ai_service.build_action_plan_response(message)
 
 
 def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tuple[ChatSession, ChatMessage, ChatMessage]:
@@ -418,14 +325,19 @@ def process_message_in_background(session_id: int, message: str) -> None:
         except Exception:
             pass
 
-        try:
-            _refresh_profile_from_session_history(db, session_id=session_id, user_id=owner_id)
-        except Exception as exc:
-            logger.warning(
-                "Profile extraction failed for session_id=%s user_id=%s error=%s",
-                session_id,
-                owner_id,
-                exc,
+        if owner_id:
+            event_bus.publish(
+                event_name=DomainEventName.ON_CHAT_MESSAGE.value,
+                user_id=owner_id,
+                payload={
+                    "session_id": session_id,
+                    "assistant_message_id": assistant_message.id,
+                    "assistant_status": infer_message_status(
+                        assistant_message.role,
+                        assistant_message.content,
+                    ).value,
+                },
+                fail_fast=False,
             )
     finally:
         db.close()

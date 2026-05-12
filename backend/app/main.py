@@ -17,6 +17,7 @@ from app.routers import action_plan, auth, chat, extended_profile, goal, health,
 from app.routers import ws as ws_router
 from app.routers import growth_record
 from app.core import ws_manager
+from app.workflows import initialize_growth_cycle_orchestrator
 
 
 error_logger = logging.getLogger("ai_mentor.errors")
@@ -87,6 +88,7 @@ def _cors_headers_for_origin(origin: str | None) -> dict[str, str]:
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_bootstrap_admin()
+    initialize_growth_cycle_orchestrator()
     # attach main event loop to websocket manager for cross-thread scheduling
     try:
         ws_manager.manager.loop = asyncio.get_running_loop()

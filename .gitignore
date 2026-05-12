@@ -225,7 +225,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-Project.md
-军师指南.md
-工程师指南.md
-项目总设计文档.md
+产品愿景.md
+架构蓝图.md

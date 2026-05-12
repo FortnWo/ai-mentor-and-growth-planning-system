@@ -5,35 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.domain_events import DomainEventName
+from app.core.event_bus import event_bus
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.goal import GoalCreate, GoalRead, GoalUpdate, GoalDetailRead
-from app.services import goal_service, chat_service, extended_profile_service
+from app.services import goal_service
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 error_logger = logging.getLogger("ai_mentor.errors")
-
-
-def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, user_extended_profile=None) -> str:
-    """构建发送给 AI 的目标拆解 Prompt"""
-    lines: list[str] = []
-
-    lines.append("Goal to break down:")
-    lines.append(f"Title: {goal_title}")
-    if goal_description:
-        lines.append(f"Description: {goal_description}")
-
-    if user_extended_profile:
-        lines.append("\nUser profile context:")
-        if user_extended_profile.goals:
-            lines.append(f"User's goals: {', '.join(user_extended_profile.goals)}")
-        if user_extended_profile.skills:
-            lines.append(f"User's skills: {', '.join(user_extended_profile.skills)}")
-        if user_extended_profile.interests:
-            lines.append(f"User's interests: {', '.join(user_extended_profile.interests)}")
-
-    return "\n".join(lines)
 
 
 def _process_goal_breakdown_in_background(
@@ -45,30 +26,18 @@ def _process_goal_breakdown_in_background(
     """
     后台任务：触发 AI 目标拆解并持久化结果。
     """
-    import app.core.database as database_module
-
-    db = database_module.SessionLocal()
     try:
-        # 获取用户扩展画像作为上下文
-        user_profile = extended_profile_service.get_profile_for_user(db, user_id)
-
-        # 构建 Prompt
-        prompt = _build_goal_breakdown_prompt(goal_title, goal_description, user_profile)
-
-        # 调用 AI
-        raw_response = chat_service.build_goal_breakdown_response(prompt)
-
-        # 解析 AI 响应
-        breakdown_data = goal_service.parse_goal_breakdown_response(raw_response)
-        if not breakdown_data:
-            error_logger.warning("Failed to parse goal breakdown for goal_id=%s", goal_id)
-            return
-
-        # 应用拆解结果到数据库
-        success = goal_service.apply_goal_breakdown_for_user(db, user_id, goal_id, breakdown_data)
-        if not success:
-            error_logger.warning("Failed to apply goal breakdown for goal_id=%s", goal_id)
-
+        event_bus.publish(
+            event_name=DomainEventName.ON_GOAL_DETECTED.value,
+            user_id=user_id,
+            payload={
+                "goal_id": goal_id,
+                "goal_title": goal_title,
+                "goal_description": goal_description,
+                "source": "goal_router",
+            },
+            fail_fast=False,
+        )
     except Exception as exc:
         error_logger.error(
             "Goal breakdown background task failed for goal_id=%s: %s\n%s",
@@ -76,8 +45,6 @@ def _process_goal_breakdown_in_background(
             exc,
             traceback.format_exc(),
         )
-    finally:
-        db.close()
 
 
 @router.post("", response_model=GoalRead, status_code=status.HTTP_201_CREATED)

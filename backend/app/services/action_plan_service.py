@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.domain_events import DomainEventName
+from app.core.event_bus import event_bus
 from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanItem, ActionPlanStatus
 from app.models.goal import Goal, GoalBreakdown
 from app.models.extended_profile import UserExtendedProfile
@@ -258,7 +260,7 @@ def _upsert_action_plan(
         db.add(new_item)
 
         if item_status == ActionPlanStatus.COMPLETED.value:
-            create_growth_record(
+            growth_record = create_growth_record(
                 db,
                 goal.user_id,
                 title=new_item.title,
@@ -270,6 +272,28 @@ def _upsert_action_plan(
                 occurred_at=datetime.utcnow(),
                 commit=False,
                 refresh=False,
+            )
+            event_bus.publish(
+                event_name=DomainEventName.ON_ACTION_COMPLETED.value,
+                user_id=goal.user_id,
+                payload={
+                    "plan_id": plan.id,
+                    "goal_id": goal.id,
+                    "plan_item_title": new_item.title,
+                    "plan_item_sequence": new_item.sequence,
+                },
+                fail_fast=False,
+            )
+            event_bus.publish(
+                event_name=DomainEventName.ON_GROWTH_UPDATED.value,
+                user_id=goal.user_id,
+                payload={
+                    "record_id": growth_record.id,
+                    "record_type": growth_record.record_type,
+                    "source_type": growth_record.source_type,
+                    "source": "action_plan_completion",
+                },
+                fail_fast=False,
             )
 
     db.commit()
