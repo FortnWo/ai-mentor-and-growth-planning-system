@@ -25,6 +25,8 @@
 - 非阻塞聊天流程：用户消息立即落库，助手回复在后台生成。
 - 通过 WebSocket（`/ws`）推送助手实时更新，并提供轮询兜底。
 - 明确的助手消息状态语义：`pending`、`completed`、`failed`。
+- AI 驱动闭环自动化：聊天消息可自动触发画像更新、目标识别、目标拆解与行动计划生成。
+- 事件总线驱动模块协同：`chat -> profile -> goals -> breakdown -> plan -> growth -> profile`。
 - 后端 5xx 错误记录到 `backend/logs/error.log`。
 
 ## 快速开始

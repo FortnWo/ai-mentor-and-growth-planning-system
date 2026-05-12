@@ -111,12 +111,12 @@ def _get_goal_for_user(db: Session, user_id: int, goal_id: int) -> Goal | None:
 
 
 def _generate_action_plan_response(db: Session, goal: Goal) -> str:
-    from app.services import chat_service, extended_profile_service
+    from app.services import ai_service, extended_profile_service
 
     profile = extended_profile_service.get_profile_for_user(db, goal.user_id)
     breakdowns = _list_breakdowns_for_goal(db, goal.id)
     prompt = _build_action_plan_prompt(goal, breakdowns, profile)
-    return chat_service.build_action_plan_response(prompt)
+    return ai_service.generate_action_plan(prompt)
 
 
 def _build_action_plan_prompt(goal: Goal, breakdowns: list[GoalBreakdown], profile: UserExtendedProfile | None) -> str:
@@ -271,6 +271,7 @@ def _upsert_action_plan(
                 commit=False,
                 refresh=False,
             )
+            _sync_growth_signal_to_profile(db, goal.user_id, new_item.title)
 
     db.commit()
     db.refresh(plan)
@@ -479,3 +480,15 @@ def _normalize_lookup_key(value: object) -> str | None:
         return None
     text = str(value).strip().lower()
     return text or None
+
+
+def _sync_growth_signal_to_profile(db: Session, user_id: int, title: str) -> None:
+    from app.services import extended_profile_service
+
+    text = str(title).strip()
+    if not text:
+        return
+
+    profile = extended_profile_service.get_or_create_profile_for_user(db, user_id)
+    profile.skills = extended_profile_service.merge_unique(profile.skills, [text])
+    db.add(profile)

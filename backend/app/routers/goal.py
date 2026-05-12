@@ -9,38 +9,15 @@ from app.core.security import get_current_user
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.goal import GoalCreate, GoalRead, GoalUpdate, GoalDetailRead
-from app.services import goal_service, chat_service, extended_profile_service
+from app.services import ai_service, goal_service, extended_profile_service
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 error_logger = logging.getLogger("ai_mentor.errors")
 
 
-def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, user_extended_profile=None) -> str:
-    """构建发送给 AI 的目标拆解 Prompt"""
-    lines: list[str] = []
-
-    lines.append("Goal to break down:")
-    lines.append(f"Title: {goal_title}")
-    if goal_description:
-        lines.append(f"Description: {goal_description}")
-
-    if user_extended_profile:
-        lines.append("\nUser profile context:")
-        if user_extended_profile.goals:
-            lines.append(f"User's goals: {', '.join(user_extended_profile.goals)}")
-        if user_extended_profile.skills:
-            lines.append(f"User's skills: {', '.join(user_extended_profile.skills)}")
-        if user_extended_profile.interests:
-            lines.append(f"User's interests: {', '.join(user_extended_profile.interests)}")
-
-    return "\n".join(lines)
-
-
 def _process_goal_breakdown_in_background(
     goal_id: int,
     user_id: int,
-    goal_title: str,
-    goal_description: str | None,
 ) -> None:
     """
     后台任务：触发 AI 目标拆解并持久化结果。
@@ -52,11 +29,15 @@ def _process_goal_breakdown_in_background(
         # 获取用户扩展画像作为上下文
         user_profile = extended_profile_service.get_profile_for_user(db, user_id)
 
+        goal = goal_service.get_goal_for_user(db, user_id, goal_id)
+        if not goal:
+            return
+
         # 构建 Prompt
-        prompt = _build_goal_breakdown_prompt(goal_title, goal_description, user_profile)
+        prompt = ai_service.build_goal_breakdown_prompt(goal, user_profile)
 
         # 调用 AI
-        raw_response = chat_service.build_goal_breakdown_response(prompt)
+        raw_response = ai_service.generate_goal_breakdown(prompt)
 
         # 解析 AI 响应
         breakdown_data = goal_service.parse_goal_breakdown_response(raw_response)
@@ -102,8 +83,6 @@ def create_goal(
         _process_goal_breakdown_in_background,
         goal.id,
         current_user.id,
-        goal.title,
-        goal.description,
     )
 
     return GoalRead.model_validate(goal)
@@ -185,8 +164,6 @@ def refresh_goal_breakdown(
         _process_goal_breakdown_in_background,
         goal.id,
         current_user.id,
-        goal.title,
-        goal.description,
     )
 
     return {"message": "Goal breakdown refresh started"}

@@ -39,12 +39,15 @@ Vue SPA
 - `app/core/security.py`：密码哈希、JWT 创建 / 解析、认证依赖。
 - `app/core/bootstrap.py`：可选的启动管理员初始化。
 - `app/core/ws_manager.py`：内存型 WebSocket 连接管理器（按用户连接）。
+- `app/core/event_bus.py`：内存型事件总线，负责模块间事件分发。
 
 ### Services
 
 - `app/services/auth_service.py`：登录流程与令牌响应组装。
 - `app/services/user_service.py`：用户增删改查、资料更新、密码更新、管理员委托逻辑。
 - `app/services/chat_service.py`：会话 / 消息持久化、后台 LLM 交互、消息状态序列化与 WebSocket 通知。
+- `app/services/ai_service.py`：统一 AI 服务层，封装画像抽取、目标拆解、行动计划调用。
+- `app/services/automation_service.py`：闭环自动化编排，消费并发布成长事件。
 
 ### Routers
 
@@ -61,6 +64,7 @@ Vue SPA
 2. 后台任务创建助手占位消息（`pending`）并启动心跳推送。
 3. LLM 在后台生成完成后，会更新同一条助手记录为最终内容。
 4. 后端通过 WebSocket 推送 `new_message`，前端替换占位内容。
+5. 自动化编排触发事件链：`on_chat_message -> on_profile_updated -> on_goal_detected -> on_goal_breakdown -> on_action_generated -> on_growth_updated`。
 
 消息状态语义：
 

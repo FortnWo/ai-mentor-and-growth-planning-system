@@ -419,14 +419,11 @@ def process_message_in_background(session_id: int, message: str) -> None:
             pass
 
         try:
-            _refresh_profile_from_session_history(db, session_id=session_id, user_id=owner_id)
+            import app.services.automation_service as automation_service
+
+            automation_service.run_chat_automation_pipeline(db, session_id=session_id, user_id=owner_id)
         except Exception as exc:
-            logger.warning(
-                "Profile extraction failed for session_id=%s user_id=%s error=%s",
-                session_id,
-                owner_id,
-                exc,
-            )
+            logger.warning("Automation pipeline failed for session_id=%s user_id=%s error=%s", session_id, owner_id, exc)
     finally:
         db.close()
 

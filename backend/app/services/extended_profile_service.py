@@ -108,10 +108,10 @@ def refresh_profile_from_chat_history(
     if not messages:
         raise ValueError("No chat history available for extraction")
 
-    from app.services import chat_service
+    from app.services import ai_service
 
     prompt = build_extraction_input(messages)
-    raw_output = chat_service.build_profile_extraction_response(prompt)
+    raw_output = ai_service.generate_profile_extraction(prompt)
     extraction = parse_extraction_result(raw_output)
     profile = apply_extraction_result_for_user(db, user_id=user_id, result=extraction)
     return profile, extraction
