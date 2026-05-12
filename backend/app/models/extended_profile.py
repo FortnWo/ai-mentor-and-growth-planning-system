@@ -11,7 +11,7 @@ UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
 
 
 class UserExtendedProfile(Base):
-    __tablename__ = "user_extended_profiles"
+    __tablename__ = "user_profile"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
     user_id = Column(

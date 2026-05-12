@@ -4,7 +4,9 @@ import logging
 from collections import defaultdict
 from threading import RLock
 from typing import Callable
+import json
 
+from app.core.database import SessionLocal
 from app.core.domain_events import DomainEvent, build_domain_event
 
 
@@ -52,6 +54,7 @@ class EventBus:
             payload=payload,
             trace_id=trace_id,
         )
+        self._persist_event(event)
         errors = self.dispatch(event, fail_fast=fail_fast)
         if errors and not fail_fast:
             logger.warning(
@@ -82,6 +85,34 @@ class EventBus:
                     raise EventDispatchError(event, errors) from exc
 
         return errors
+
+    @staticmethod
+    def _persist_event(event: DomainEvent) -> None:
+        from app.models.domain_event import DomainEventRecord
+
+        db = SessionLocal()
+        try:
+            db.add(
+                DomainEventRecord(
+                    event_id=event.event_id,
+                    trace_id=event.trace_id,
+                    event_name=event.name,
+                    user_id=event.user_id,
+                    payload=json.dumps(event.payload, ensure_ascii=False),
+                    occurred_at=event.occurred_at,
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Failed to persist domain event event_name=%s trace_id=%s",
+                event.name,
+                event.trace_id,
+            )
+            raise
+        finally:
+            db.close()
 
 
 event_bus = EventBus()

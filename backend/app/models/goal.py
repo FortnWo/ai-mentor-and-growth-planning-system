@@ -29,7 +29,7 @@ UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
 
 
 class Goal(Base):
-    __tablename__ = "goals"
+    __tablename__ = "user_goals"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
     user_id = Column(UnsignedInt, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -68,7 +68,7 @@ class GoalBreakdown(Base):
     __tablename__ = "goal_breakdowns"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
-    goal_id = Column(UnsignedInt, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    goal_id = Column(UnsignedInt, ForeignKey("user_goals.id", ondelete="CASCADE"), nullable=False, index=True)
     parent_id = Column(UnsignedInt, ForeignKey("goal_breakdowns.id", ondelete="CASCADE"), nullable=True, index=True)
 
     title = Column(String(255), nullable=False)
