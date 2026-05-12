@@ -27,12 +27,12 @@ UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
 
 
 class ActionPlan(Base):
-    __tablename__ = "action_plans"
+    __tablename__ = "goal_actions"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
     goal_id = Column(
         UnsignedInt,
-        ForeignKey("goals.id", ondelete="CASCADE"),
+        ForeignKey("user_goals.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
@@ -64,10 +64,10 @@ class ActionPlan(Base):
 
 
 class ActionPlanItem(Base):
-    __tablename__ = "action_plan_items"
+    __tablename__ = "goal_action_items"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
-    plan_id = Column(UnsignedInt, ForeignKey("action_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id = Column(UnsignedInt, ForeignKey("goal_actions.id", ondelete="CASCADE"), nullable=False, index=True)
     breakdown_id = Column(
         UnsignedInt,
         ForeignKey("goal_breakdowns.id", ondelete="SET NULL"),

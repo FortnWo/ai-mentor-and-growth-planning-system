@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.models.extended_profile import UserExtendedProfile
+from app.models.user_trait import UserTrait
 from app.schemas.extended_profile import (
     ExtendedProfileExtractionResult,
     UserExtendedProfileUpdate,
@@ -19,6 +20,15 @@ PROFILE_FIELDS = (
     "personality",
     "preferences",
 )
+
+TRAIT_TYPE_MAPPING = {
+    "interests": "interest",
+    "skills": "skill",
+    "goals": "goal_signal",
+    "study_habits": "study_habit",
+    "personality": "personality",
+    "preferences": "preference",
+}
 
 
 def get_profile_for_user(db: Session, user_id: int) -> UserExtendedProfile | None:
@@ -48,6 +58,7 @@ def update_profile_for_user(db: Session, user_id: int, profile_in: UserExtendedP
         if field in update_data:
             setattr(profile, field, update_data[field] or [])
 
+    _sync_traits_for_profile(db, user_id, profile, source="profile_update")
     db.commit()
     db.refresh(profile)
     return profile
@@ -74,10 +85,52 @@ def apply_extraction_result_for_user(
         setattr(profile, field, merged)
 
     profile.last_extracted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    _sync_traits_for_profile(db, user_id, profile, source="chat_extraction")
 
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def _sync_traits_for_profile(db: Session, user_id: int, profile: UserExtendedProfile, *, source: str) -> None:
+    trait_types = list(TRAIT_TYPE_MAPPING.values())
+    existing_traits = (
+        db.query(UserTrait)
+        .filter(UserTrait.user_id == user_id, UserTrait.trait_type.in_(trait_types))
+        .all()
+    )
+    existing_index = {(trait.trait_type, trait.trait_key.lower()): trait for trait in existing_traits}
+
+    observed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    for field_name, trait_type in TRAIT_TYPE_MAPPING.items():
+        field_values = getattr(profile, field_name, []) or []
+        for raw_value in field_values:
+            trait_key = str(raw_value).strip()
+            if not trait_key:
+                continue
+
+            lookup_key = (trait_type, trait_key.lower())
+            trait = existing_index.get(lookup_key)
+            if trait is None:
+                trait = UserTrait(
+                    user_id=user_id,
+                    trait_type=trait_type,
+                    trait_key=trait_key,
+                    trait_score=1.0,
+                    source=source,
+                    confidence=0.8,
+                    last_observed_at=observed_at,
+                    trait_value=json.dumps({"label": trait_key}, ensure_ascii=False),
+                )
+                existing_index[lookup_key] = trait
+            else:
+                current_score = float(trait.trait_score or 1.0)
+                trait.trait_score = min(current_score + 0.1, 10.0)
+                trait.source = source
+                trait.last_observed_at = observed_at
+                trait.trait_value = json.dumps({"label": trait_key}, ensure_ascii=False)
+
+            db.add(trait)
 
 
 def parse_extraction_result(raw_text: str) -> ExtendedProfileExtractionResult:
