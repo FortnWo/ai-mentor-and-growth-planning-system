@@ -2,7 +2,6 @@ import json
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -11,8 +10,6 @@ from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanIt
 from app.models.goal import Goal, GoalBreakdown
 from app.models.extended_profile import UserExtendedProfile
 from app.schemas.action_plan import ActionPlanDetailRead
-from app.models.growth_record import GrowthRecordType, GrowthRecordSource
-from app.services.growth_record_service import create_growth_record
 
 logger = logging.getLogger(__name__)
 
@@ -256,22 +253,23 @@ def _upsert_action_plan(
         )
 
         db.add(new_item)
+        # Ensure auto-generated ID is available before commit for event handler payload.
+        db.flush()
 
         if item_status == ActionPlanStatus.COMPLETED.value:
-            create_growth_record(
+            from app.core.event_bus import event_bus
+            import app.services.automation_service as automation_service
+
+            event_bus.publish(
                 db,
-                goal.user_id,
-                title=new_item.title,
-                summary=new_item.description,
-                content=f"自动回写：来自行动计划 {plan.id} 项目",
-                record_type=GrowthRecordType.ACTION_PLAN.value,
-                source_type=GrowthRecordSource.ACTION_PLAN.value,
-                source_ref_id=None,
-                occurred_at=datetime.utcnow(),
-                commit=False,
-                refresh=False,
+                automation_service.EVENT_ACTION_COMPLETED,
+                {
+                    "user_id": goal.user_id,
+                    "action_item_id": new_item.id,
+                    "action_title": new_item.title,
+                    "action_description": new_item.description,
+                },
             )
-            _sync_growth_signal_to_profile(db, goal.user_id, new_item.title)
 
     db.commit()
     db.refresh(plan)
@@ -480,15 +478,3 @@ def _normalize_lookup_key(value: object) -> str | None:
         return None
     text = str(value).strip().lower()
     return text or None
-
-
-def _sync_growth_signal_to_profile(db: Session, user_id: int, title: str) -> None:
-    from app.services import extended_profile_service
-
-    text = str(title).strip()
-    if not text:
-        return
-
-    profile = extended_profile_service.get_or_create_profile_for_user(db, user_id)
-    profile.skills = extended_profile_service.merge_unique(profile.skills, [text])
-    db.add(profile)

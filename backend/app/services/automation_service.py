@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.event_bus import event_bus
-from app.models.action_plan import ActionPlanItem, ActionPlanStatus
 from app.models.chat import ChatSession
 from app.models.goal import Goal
 from app.models.growth_record import GrowthRecordSource, GrowthRecordType
@@ -22,6 +21,7 @@ EVENT_GOAL_BREAKDOWN = "on_goal_breakdown"
 EVENT_ACTION_GENERATED = "on_action_generated"
 EVENT_ACTION_COMPLETED = "on_action_completed"
 EVENT_GROWTH_UPDATED = "on_growth_updated"
+ACTION_COMPLETION_TEMPLATE = "自动回写：来自行动计划条目 {action_item_id}"
 
 _registered = False
 _register_lock = RLock()
@@ -214,27 +214,8 @@ def _on_goal_breakdown(db: Session, payload: dict) -> None:
 
 
 def _on_action_generated(db: Session, payload: dict) -> None:
-    user_id = int(payload.get("user_id", 0) or 0)
-    plan_id = int(payload.get("plan_id", 0) or 0)
-    if not user_id or not plan_id:
-        return
-
-    completed_items = (
-        db.query(ActionPlanItem)
-        .filter(ActionPlanItem.plan_id == plan_id, ActionPlanItem.status == ActionPlanStatus.COMPLETED.value)
-        .all()
-    )
-    for item in completed_items:
-        event_bus.publish(
-            db,
-            EVENT_ACTION_COMPLETED,
-            {
-                "user_id": user_id,
-                "action_item_id": item.id,
-                "action_title": item.title,
-                "action_description": item.description,
-            },
-        )
+    """预留事件钩子：行动计划生成后可在此扩展通知、推荐或打分策略。"""
+    return
 
 
 def _on_action_completed(db: Session, payload: dict) -> None:
@@ -251,11 +232,13 @@ def _on_action_completed(db: Session, payload: dict) -> None:
         user_id,
         title=action_title,
         summary=action_description,
-        content=f"自动回写：来自行动计划条目 {action_item_id}",
+        content=ACTION_COMPLETION_TEMPLATE.format(action_item_id=action_item_id),
         record_type=GrowthRecordType.ACTION_PLAN.value,
         source_type=GrowthRecordSource.ACTION_PLAN.value,
         source_ref_id=action_item_id,
         idempotency_key=idempotency_key,
+        commit=False,
+        refresh=False,
     )
 
     event_bus.publish(
@@ -274,6 +257,11 @@ def _on_growth_updated(db: Session, payload: dict) -> None:
     if not user_id or not growth_title:
         return
 
+    sync_growth_signal_to_profile(db, user_id=user_id, growth_title=growth_title)
+
+
+def sync_growth_signal_to_profile(db: Session, *, user_id: int, growth_title: str) -> None:
+    """将成长事件标题同步为画像技能标签，并做去重后落库。"""
     profile = extended_profile_service.get_or_create_profile_for_user(db, user_id)
     updated_skills = extended_profile_service.merge_unique(profile.skills, [growth_title])
     if updated_skills == profile.skills:
