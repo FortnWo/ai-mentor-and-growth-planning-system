@@ -1,10 +1,7 @@
-import json
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.models.goal import Goal, GoalBreakdown, GoalStatus, GoalPriority, GoalBreakdownStatus
 from app.schemas.goal import (
     GoalCreate,
@@ -14,6 +11,7 @@ from app.schemas.goal import (
     GoalBreakdownNode,
     GoalBreakdownTree,
 )
+import app.services.breakdown_service as breakdown_service
 
 logger = logging.getLogger(__name__)
 
@@ -166,43 +164,7 @@ def _insert_breakdown_nodes(
 
 
 def parse_goal_breakdown_response(raw_text: str) -> dict | None:
-    """
-    解析 AI 返回的目标拆解结果。
-    容错策略：
-    - 允许包含包裹字段（如 { "goal": {...}, "breakdown": {...} }）
-    - 容错 JSON 嵌入文本，提取首尾大括号
-    - 对字段缺失做默认空值处理
-    """
-    if not raw_text or not isinstance(raw_text, str):
-        return None
-
-    text = raw_text.strip()
-    if not text:
-        return None
-
-    # 尝试直接解析
-    try:
-        payload = json.loads(text)
-        if isinstance(payload, dict):
-            return payload
-    except json.JSONDecodeError:
-        pass
-
-    # 尝试提取首尾大括号之间的 JSON
-    start_idx = text.find('{')
-    end_idx = text.rfind('}')
-
-    if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
-        try:
-            json_text = text[start_idx : end_idx + 1]
-            payload = json.loads(json_text)
-            if isinstance(payload, dict):
-                return payload
-        except json.JSONDecodeError:
-            pass
-
-    logger.warning("Failed to parse goal breakdown response: %s", raw_text[:100])
-    return None
+    return breakdown_service.parse_breakdown_response(raw_text)
 
 
 def _extract_breakdowns_from_response(response_data: dict) -> list[dict] | None:
@@ -231,33 +193,7 @@ def apply_goal_breakdown_for_user(
     goal_id: int,
     breakdown_data: dict,
 ) -> bool:
-    """
-    应用 AI 生成的目标拆解结构到数据库。
-    失败时返回 False。
-    """
-    try:
-        goal = get_goal_for_user(db, user_id, goal_id)
-        if not goal:
-            return False
-
-        # 清除旧的拆解
-        _clear_breakdowns_for_goal(db, goal_id)
-
-        # 提取 breakdowns 列表
-        breakdowns = _extract_breakdowns_from_response(breakdown_data)
-        if not breakdowns:
-            logger.warning("No breakdowns found in response for goal_id=%s", goal_id)
-            return False
-
-        # 插入新的拆解节点
-        _insert_breakdown_nodes(db, goal_id, breakdowns)
-        db.commit()
-        return True
-
-    except Exception as exc:
-        db.rollback()
-        logger.error("Failed to apply goal breakdown for goal_id=%s: %s", goal_id, exc)
-        return False
+    return breakdown_service.apply_breakdown_for_goal(db, user_id, goal_id, breakdown_data)
 
 
 def create_goal_with_breakdown(
@@ -286,4 +222,4 @@ def refresh_breakdown_for_user(
     breakdown_data: dict,
 ) -> bool:
     """重新拆解目标"""
-    return apply_goal_breakdown_for_user(db, user_id, goal_id, breakdown_data)
+    return breakdown_service.refresh_breakdown_for_goal(db, user_id, goal_id, breakdown_data)

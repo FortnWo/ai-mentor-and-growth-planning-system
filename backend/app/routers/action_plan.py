@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.models.action_plan import ActionPlanStatus
 from app.models.user import User
 from app.schemas.action_plan import ActionPlanCreate, ActionPlanDetailRead, ActionPlanRead
-from app.services import action_plan_service
+from app.services import plan_service
 
 router = APIRouter(prefix="/action-plans", tags=["action-plans"])
 error_logger = logging.getLogger("ai_mentor.errors")
@@ -21,12 +21,12 @@ def _process_action_plan_in_background(plan_id: int, user_id: int) -> None:
 
     db = database_module.SessionLocal()
     try:
-        plan = action_plan_service.generate_action_plan_with_retry(db, user_id, plan_id)
+        plan = plan_service.generate_plan_with_retry(db, user_id, plan_id)
         if not plan:
             error_logger.warning("Action plan generation returned no plan plan_id=%s user_id=%s", plan_id, user_id)
     except ValueError as exc:
         error_logger.warning("Action plan generation failed plan_id=%s user_id=%s error=%s", plan_id, user_id, exc)
-        action_plan_service.mark_action_plan_failed(db, plan_id, str(exc))
+        plan_service.mark_plan_failed(db, plan_id, str(exc))
     except Exception as exc:
         error_logger.error(
             "Action plan generation failed plan_id=%s user_id=%s error=%s\n%s",
@@ -35,7 +35,7 @@ def _process_action_plan_in_background(plan_id: int, user_id: int) -> None:
             exc,
             traceback.format_exc(),
         )
-        action_plan_service.mark_action_plan_failed(db, plan_id, str(exc))
+        plan_service.mark_plan_failed(db, plan_id, str(exc))
     finally:
         db.close()
 
@@ -50,17 +50,17 @@ def create_action_plan(
     if not settings.ACTION_PLAN_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Action plan feature is disabled")
 
-    existing_plan = action_plan_service.get_action_plan_for_goal(db, current_user.id, payload.goal_id)
+    existing_plan = plan_service.get_plan_for_goal(db, current_user.id, payload.goal_id)
     already_in_progress = bool(existing_plan and existing_plan.status == ActionPlanStatus.IN_PROGRESS.value)
     if already_in_progress:
         plan = existing_plan
     else:
-        plan = action_plan_service.prepare_action_plan_for_goal(db, current_user.id, payload.goal_id, reset_items=False)
+        plan = plan_service.prepare_plan_for_goal(db, current_user.id, payload.goal_id, reset_items=False)
         if not plan:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
         background_tasks.add_task(_process_action_plan_in_background, plan.id, current_user.id)
 
-    detail = action_plan_service.get_plan_detail(db, current_user.id, plan.id)
+    detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
     if not detail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
     return detail
@@ -71,7 +71,7 @@ def list_action_plans(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    plans = action_plan_service.list_action_plans_for_user(db, current_user.id)
+    plans = plan_service.list_plans_for_user(db, current_user.id)
     return [ActionPlanRead.model_validate(plan) for plan in plans]
 
 
@@ -81,7 +81,7 @@ def get_action_plan_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    plan = action_plan_service.get_plan_detail(db, current_user.id, plan_id)
+    plan = plan_service.get_plan_detail(db, current_user.id, plan_id)
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
     return plan
@@ -97,17 +97,17 @@ def refresh_action_plan(
     if not settings.ACTION_PLAN_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Action plan feature is disabled")
 
-    existing_plan = action_plan_service.get_action_plan_for_user(db, current_user.id, plan_id)
+    existing_plan = plan_service.get_plan_for_user(db, current_user.id, plan_id)
     already_in_progress = bool(existing_plan and existing_plan.status == ActionPlanStatus.IN_PROGRESS.value)
     if already_in_progress:
         plan = existing_plan
     else:
-        plan = action_plan_service.prepare_action_plan_for_refresh(db, current_user.id, plan_id, reset_items=False)
+        plan = plan_service.prepare_plan_for_refresh(db, current_user.id, plan_id, reset_items=False)
         if not plan:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
         background_tasks.add_task(_process_action_plan_in_background, plan.id, current_user.id)
 
-    detail = action_plan_service.get_plan_detail(db, current_user.id, plan.id)
+    detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
     if not detail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
     return detail
@@ -119,9 +119,8 @@ def delete_action_plan(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    plan = action_plan_service.get_action_plan_for_user(db, current_user.id, plan_id)
+    plan = plan_service.get_plan_for_user(db, current_user.id, plan_id)
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
 
-    db.delete(plan)
-    db.commit()
+    plan_service.delete_plan_for_user(db, current_user.id, plan_id)
