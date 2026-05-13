@@ -4,7 +4,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.growth_record import GrowthRecordCreate, GrowthRecordRead, GrowthRecordListItem, GrowthRecordStats
+from app.schemas.growth_record import (
+    GrowthDailyTrendPoint,
+    GrowthRecordCreate,
+    GrowthRecordListItem,
+    GrowthRecordRead,
+    GrowthRecordStats,
+)
 from app.services import growth_record_service
 from app.schemas.growth_summary import GrowthSummaryCreate, GrowthSummaryRead
 from app.services import growth_summary_service
@@ -66,6 +72,16 @@ def stats(start_date: str | None = None, end_date: str | None = None, current_us
     data = growth_record_service.stats_for_user(db, current_user.id, start_date=start_date, end_date=end_date)
     return GrowthRecordStats.model_validate(data)
 
+
+@router.get("/trend/daily", response_model=list[GrowthDailyTrendPoint])
+def daily_trend(
+    start_date: str,
+    end_date: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = growth_record_service.daily_trend_for_user(db, current_user.id, start_date=start_date, end_date=end_date)
+    return [GrowthDailyTrendPoint.model_validate(r) for r in rows]
 
 
 @router.post("/summary/generate", response_model=GrowthSummaryRead, status_code=status.HTTP_202_ACCEPTED)

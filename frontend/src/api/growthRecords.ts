@@ -28,5 +28,16 @@ export const listGrowthRecords = (params = {}) =>
 
 export const getGrowthStats = (params = {}) => apiClient.get('/growth-records/stats', { params }).then((r) => r.data)
 
+export interface GrowthDailyTrendPoint {
+    record_date: string
+    completed_count: number
+    reflection_count: number
+    milestone_count: number
+    growth_score: number
+}
+
+export const getGrowthDailyTrend = (params: { start_date: string; end_date: string }) =>
+    apiClient.get<GrowthDailyTrendPoint[]>('/growth-records/trend/daily', { params }).then((r) => r.data)
+
 export const generateWeeklySummary = (payload: { start_date: string; end_date: string }) =>
     apiClient.post('/growth-records/summary/generate', payload).then((r) => r.data)

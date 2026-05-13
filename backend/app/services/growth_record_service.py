@@ -1,7 +1,7 @@
 from datetime import datetime, date
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from app.models.growth_record import GrowthRecord, GrowthRecordSource, GrowthRecordType
 from app.services import chat_service
@@ -300,3 +300,96 @@ def stats_for_user(db: Session, user_id: int, start_date: str | None = None, end
             "growth_score": int(growth_score),
             "last_activity_at": last_activity,
         }
+
+
+def daily_trend_for_user(db: Session, user_id: int, start_date: str, end_date: str) -> list[dict]:
+    """Return one row per calendar day in [start_date, end_date] for charting.
+
+    Prefers ``growth_daily_aggregates`` when present; fills gaps from grouped
+    ``growth_records``. Missing days are zero-filled.
+    """
+    from datetime import datetime, timedelta
+
+    sd = datetime.fromisoformat(start_date).date()
+    ed = datetime.fromisoformat(end_date).date()
+    if sd > ed:
+        return []
+
+    from app.models.growth_aggregate import GrowthDailyAggregate
+
+    by_date: dict[str, dict] = {}
+
+    agg_rows = (
+        db.query(GrowthDailyAggregate)
+        .filter(
+            GrowthDailyAggregate.user_id == user_id,
+            GrowthDailyAggregate.record_date >= sd,
+            GrowthDailyAggregate.record_date <= ed,
+        )
+        .order_by(GrowthDailyAggregate.record_date.asc())
+        .all()
+    )
+    for r in agg_rows:
+        k = r.record_date.isoformat() if hasattr(r.record_date, "isoformat") else str(r.record_date)
+        by_date[k] = {
+            "record_date": k,
+            "completed_count": int(r.completed_count or 0),
+            "reflection_count": int(r.reflection_count or 0),
+            "milestone_count": int(r.milestone_count or 0),
+            "growth_score": int(r.growth_score or 0),
+        }
+
+    ap = GrowthRecordType.ACTION_PLAN.value
+    mn = GrowthRecordType.MANUAL.value
+    ms = GrowthRecordType.MILESTONE.value
+
+    grouped = (
+        db.query(
+            GrowthRecord.record_date,
+            func.sum(case((GrowthRecord.record_type == ap, 1), else_=0)).label("completed_sum"),
+            func.sum(case((GrowthRecord.record_type == mn, 1), else_=0)).label("reflection_sum"),
+            func.sum(case((GrowthRecord.record_type == ms, 1), else_=0)).label("milestone_sum"),
+            func.coalesce(func.sum(GrowthRecord.score), 0).label("score_sum"),
+        )
+        .filter(
+            GrowthRecord.user_id == user_id,
+            GrowthRecord.deleted_at.is_(None),
+            GrowthRecord.record_date.isnot(None),
+            GrowthRecord.record_date >= start_date,
+            GrowthRecord.record_date <= end_date,
+        )
+        .group_by(GrowthRecord.record_date)
+        .all()
+    )
+    for row in grouped:
+        raw_key = row[0]
+        if not raw_key:
+            continue
+        k = raw_key if isinstance(raw_key, str) else raw_key.isoformat()
+        if k not in by_date:
+            by_date[k] = {
+                "record_date": k,
+                "completed_count": int(row.completed_sum or 0),
+                "reflection_count": int(row.reflection_sum or 0),
+                "milestone_count": int(row.milestone_sum or 0),
+                "growth_score": int(row.score_sum or 0),
+            }
+
+    out: list[dict] = []
+    cur = sd
+    while cur <= ed:
+        k = cur.isoformat()
+        out.append(
+            by_date.get(
+                k,
+                {
+                    "record_date": k,
+                    "completed_count": 0,
+                    "reflection_count": 0,
+                    "milestone_count": 0,
+                    "growth_score": 0,
+                },
+            )
+        )
+        cur += timedelta(days=1)
+    return out

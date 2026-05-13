@@ -120,3 +120,30 @@ def test_aggregation_updated_on_create(client):
     assert stats.status_code == 200
     data = stats.json()
     assert data["reflection_count"] >= 1
+
+
+def test_daily_trend_endpoint(client):
+    student = create_student_user(client, 13)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    from datetime import date, timedelta
+
+    today = date.today()
+    start = (today - timedelta(days=2)).isoformat()
+    end = today.isoformat()
+
+    r = client.get("/growth-records/trend/daily", params={"start_date": start, "end_date": end}, headers=headers)
+    assert r.status_code == 200
+    points = r.json()
+    assert len(points) == 3
+    assert all("record_date" in p for p in points)
+
+    payload = {"title": "Trend day", "summary": "x", "record_type": "manual", "idempotency_key": "trend-1"}
+    assert client.post("/growth-records", json=payload, headers=headers).status_code == 201
+
+    r2 = client.get("/growth-records/trend/daily", params={"start_date": start, "end_date": end}, headers=headers)
+    assert r2.status_code == 200
+    today_point = next((p for p in r2.json() if p["record_date"] == end), None)
+    assert today_point is not None
+    assert today_point["reflection_count"] >= 1
