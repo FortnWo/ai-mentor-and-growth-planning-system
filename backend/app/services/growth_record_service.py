@@ -30,7 +30,11 @@ def create_growth_record(
     if idempotency_key:
         existing = (
             db.query(GrowthRecord)
-            .filter(GrowthRecord.user_id == user_id, GrowthRecord.idempotency_key == idempotency_key)
+            .filter(
+                GrowthRecord.user_id == user_id,
+                GrowthRecord.idempotency_key == idempotency_key,
+                GrowthRecord.deleted_at.is_(None),
+            )
             .first()
         )
         if existing:
@@ -108,6 +112,64 @@ def create_growth_record(
     if refresh:
         db.refresh(record)
     return record
+
+
+def void_growth_record_by_idempotency_key(
+    db: Session,
+    user_id: int,
+    idempotency_key: str,
+    *,
+    commit: bool = True,
+) -> bool:
+    """Soft-delete a growth record by idempotency key and reverse its daily aggregate deltas."""
+    from datetime import datetime, timezone
+
+    rec = (
+        db.query(GrowthRecord)
+        .filter(
+            GrowthRecord.user_id == user_id,
+            GrowthRecord.idempotency_key == idempotency_key,
+            GrowthRecord.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not rec:
+        return False
+
+    rec.deleted_at = datetime.now(timezone.utc)
+    db.add(rec)
+
+    try:
+        from app.models.growth_aggregate import GrowthDailyAggregate
+
+        try:
+            agg_date = datetime.fromisoformat(rec.record_date).date() if rec.record_date else date.today()
+        except Exception:
+            agg_date = date.today()
+
+        existing = (
+            db.query(GrowthDailyAggregate)
+            .filter(GrowthDailyAggregate.user_id == user_id, GrowthDailyAggregate.record_date == agg_date)
+            .with_for_update(nowait=False)
+            .first()
+        )
+        if existing:
+            delta_completed = -1 if rec.record_type == GrowthRecordType.ACTION_PLAN.value else 0
+            delta_milestone = -1 if rec.record_type == GrowthRecordType.MILESTONE.value else 0
+            delta_reflection = -1 if rec.record_type == GrowthRecordType.MANUAL.value else 0
+            delta_score = -int(rec.score or 0)
+
+            existing.completed_count = max(0, (existing.completed_count or 0) + delta_completed)
+            existing.milestone_count = max(0, (existing.milestone_count or 0) + delta_milestone)
+            existing.reflection_count = max(0, (existing.reflection_count or 0) + delta_reflection)
+            existing.growth_score = max(0, (existing.growth_score or 0) + delta_score)
+            db.add(existing)
+    except Exception:
+        pass
+
+    if commit:
+        db.commit()
+    return True
 
 
 def list_growth_records(

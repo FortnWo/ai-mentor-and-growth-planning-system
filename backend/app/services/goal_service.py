@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.goal import Goal, GoalBreakdown, GoalStatus, GoalPriority, GoalBreakdownStatus
+from app.models.action_plan import ActionPlan
 from app.schemas.goal import (
     GoalCreate,
     GoalUpdate,
@@ -13,6 +14,7 @@ from app.schemas.goal import (
     GoalDetailRead,
     GoalBreakdownNode,
     GoalBreakdownTree,
+    MainActionPlanProgress,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,11 +113,20 @@ def _get_goal_breakdown_tree(db: Session, goal: Goal) -> GoalBreakdownTree:
 
 def get_goal_detail_for_user(db: Session, user_id: int, goal_id: int) -> GoalDetailRead | None:
     """获取目标详情包含拆解树"""
+    from app.services import action_plan_service
+
+    goal = get_goal_for_user(db, user_id, goal_id)
+    if not goal:
+        return None
+
+    action_plan_service.sync_goal_deadlines(db, goal)
     goal = get_goal_for_user(db, user_id, goal_id)
     if not goal:
         return None
 
     breakdown_tree = _get_goal_breakdown_tree(db, goal)
+    progress_rows = action_plan_service.list_main_action_plan_progress(db, goal.id)
+    main_action_plan_progress = [MainActionPlanProgress.model_validate(row) for row in progress_rows]
 
     return GoalDetailRead(
         id=goal.id,
@@ -128,12 +139,14 @@ def get_goal_detail_for_user(db: Session, user_id: int, goal_id: int) -> GoalDet
         created_at=goal.created_at,
         updated_at=goal.updated_at,
         breakdowns=breakdown_tree,
+        main_action_plan_progress=main_action_plan_progress,
     )
 
 
 def _clear_breakdowns_for_goal(db: Session, goal_id: int) -> None:
-    """清除某个目标的所有拆解节点"""
-    db.query(GoalBreakdown).filter(GoalBreakdown.goal_id == goal_id).delete()
+    """清除某个目标的所有拆解节点（先删行动计划，避免外键与孤儿数据）。"""
+    db.query(ActionPlan).filter(ActionPlan.goal_id == goal_id).delete(synchronize_session=False)
+    db.query(GoalBreakdown).filter(GoalBreakdown.goal_id == goal_id).delete(synchronize_session=False)
 
 
 def _insert_breakdown_nodes(

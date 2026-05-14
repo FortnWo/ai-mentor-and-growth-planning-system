@@ -25,7 +25,7 @@ const workspaceTitle = computed(() => {
   }
 
   if (route.path === '/profile/extended') {
-    return '扩展画像实验室'
+    return '用户画像实验室'
   }
 
   if (route.path === '/profile') {
@@ -76,10 +76,10 @@ const navigationItems = computed(() => {
 
   return [
     { to: '/chat', label: '聊天' },
-    { to: '/profile', label: '我的资料' },
-    { to: '/profile/extended', label: '扩展画像' },
+    { to: '/profile/extended', label: '用户画像' },
     { to: '/plan', label: '成长计划' },
     { to: '/growth', label: '成长记录' },
+    { to: '/profile', label: '我的资料' },
     ...(admin.value ? [{ to: '/admin/users', label: '用户管理' }] : []),
   ]
 })
@@ -275,9 +275,9 @@ async function logout() {
   width: 2.8rem;
   height: 2.8rem;
   border-radius: 18px;
-  color: #eff6ff;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.95), rgba(37, 99, 235, 0.95));
-  box-shadow: 0 18px 28px rgba(6, 182, 212, 0.18);
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.98), rgba(37, 99, 235, 0.95));
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
 }
 
 .brand-copy {
@@ -287,7 +287,7 @@ async function logout() {
 }
 
 .brand-copy strong {
-  color: #f8fbff;
+  color: var(--heading);
   font-family: var(--font-display);
   letter-spacing: -0.03em;
 }
@@ -302,9 +302,9 @@ async function logout() {
   align-items: center;
   gap: 0.45rem;
   padding: 0.55rem 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.56);
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .status-dot {
@@ -337,9 +337,9 @@ async function logout() {
 
 .nav-link:hover,
 .nav-link.router-link-active {
-  color: #f8fbff;
-  border-color: rgba(6, 182, 212, 0.24);
-  background: rgba(6, 182, 212, 0.08);
+  color: var(--heading);
+  border-color: rgba(8, 145, 178, 0.28);
+  background: rgba(224, 242, 254, 0.85);
   transform: translateY(-1px);
 }
 
@@ -421,14 +421,14 @@ async function logout() {
     display: block;
     padding: 0.85rem 1rem;
     border-radius: 16px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    background: rgba(15, 23, 42, 0.55);
-    color: #d8e7f7;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(248, 250, 252, 0.95);
+    color: var(--heading);
   }
 
   .mobile-link.router-link-active {
-    border-color: rgba(6, 182, 212, 0.24);
-    background: rgba(6, 182, 212, 0.08);
+    border-color: rgba(8, 145, 178, 0.28);
+    background: rgba(224, 242, 254, 0.9);
   }
 
   .mobile-logout {

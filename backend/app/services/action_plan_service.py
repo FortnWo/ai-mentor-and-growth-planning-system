@@ -1,18 +1,18 @@
 import json
 import logging
 import time
-from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanItem, ActionPlanStatus
-from app.models.goal import Goal, GoalBreakdown
+from app.models.goal import Goal, GoalBreakdown, GoalBreakdownStatus
 from app.models.extended_profile import UserExtendedProfile
 from app.schemas.action_plan import ActionPlanDetailRead
 from app.models.growth_record import GrowthRecordType, GrowthRecordSource
-from app.services.growth_record_service import create_growth_record
+from app.services.growth_record_service import create_growth_record, void_growth_record_by_idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,13 @@ def get_action_plan_for_user(db: Session, user_id: int, plan_id: int) -> ActionP
     )
 
 
-def get_action_plan_for_goal(db: Session, user_id: int, goal_id: int) -> ActionPlan | None:
+def list_action_plans_for_goal(db: Session, user_id: int, goal_id: int) -> list[ActionPlan]:
     return (
         db.query(ActionPlan)
         .join(Goal, Goal.id == ActionPlan.goal_id)
         .filter(ActionPlan.goal_id == goal_id, Goal.user_id == user_id)
-        .first()
+        .order_by(ActionPlan.main_breakdown_id.asc(), ActionPlan.id.asc())
+        .all()
     )
 
 
@@ -53,19 +54,6 @@ def get_plan_detail(db: Session, user_id: int, plan_id: int) -> ActionPlanDetail
     return ActionPlanDetailRead.model_validate(plan)
 
 
-def create_action_plan_for_goal(db: Session, user_id: int, goal_id: int) -> ActionPlan | None:
-    goal = _get_goal_for_user(db, user_id, goal_id)
-    if not goal:
-        return None
-
-    raw_response = _generate_action_plan_response(db, goal)
-    payload = parse_action_plan_response(raw_response)
-    if payload is None:
-        raise ValueError("AI output is not valid JSON")
-
-    return _upsert_action_plan(db, goal, payload)
-
-
 def refresh_action_plan(db: Session, user_id: int, plan_id: int) -> ActionPlan | None:
     plan = get_action_plan_for_user(db, user_id, plan_id)
     if not plan:
@@ -75,7 +63,15 @@ def refresh_action_plan(db: Session, user_id: int, plan_id: int) -> ActionPlan |
     if not goal:
         return None
 
-    raw_response = _generate_action_plan_response(db, goal)
+    main_node = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.id == plan.main_breakdown_id, GoalBreakdown.goal_id == goal.id)
+        .first()
+    )
+    if not main_node:
+        raise ValueError("Action plan is missing its main breakdown node")
+
+    raw_response = _generate_action_plan_response_for_main(db, goal, main_node)
     payload = parse_action_plan_response(raw_response)
     if payload is None:
         raise ValueError("AI output is not valid JSON")
@@ -110,18 +106,34 @@ def _get_goal_for_user(db: Session, user_id: int, goal_id: int) -> Goal | None:
     return db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user_id).first()
 
 
-def _generate_action_plan_response(db: Session, goal: Goal) -> str:
+def _generate_action_plan_response_for_main(db: Session, goal: Goal, main_node: GoalBreakdown) -> str:
     from app.services import chat_service, extended_profile_service
 
     profile = extended_profile_service.get_profile_for_user(db, goal.user_id)
-    breakdowns = _list_breakdowns_for_goal(db, goal.id)
-    prompt = _build_action_plan_prompt(goal, breakdowns, profile)
+    secondary = _list_secondary_breakdowns_for_main(db, main_node.id)
+    prompt = _build_action_plan_prompt_for_main(goal, main_node, secondary, profile, date.today().isoformat())
     return chat_service.build_action_plan_response(prompt)
 
 
-def _build_action_plan_prompt(goal: Goal, breakdowns: list[GoalBreakdown], profile: UserExtendedProfile | None) -> str:
+def _list_secondary_breakdowns_for_main(db: Session, main_id: int) -> list[GoalBreakdown]:
+    return (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.parent_id == main_id)
+        .order_by(GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .all()
+    )
+
+
+def _build_action_plan_prompt_for_main(
+    goal: Goal,
+    main_node: GoalBreakdown,
+    secondary_nodes: list[GoalBreakdown],
+    profile: UserExtendedProfile | None,
+    today_iso: str,
+) -> str:
     lines: list[str] = []
-    lines.append("Goal context:")
+    lines.append(f"Current date (planning anchor): {today_iso}")
+    lines.append("\nParent goal context:")
     lines.append(f"Title: {goal.title}")
     if goal.description:
         lines.append(f"Description: {goal.description}")
@@ -129,6 +141,11 @@ def _build_action_plan_prompt(goal: Goal, breakdowns: list[GoalBreakdown], profi
         lines.append(f"Priority: {goal.priority}")
     if goal.target_date:
         lines.append(f"Target date: {goal.target_date}")
+
+    lines.append("\nMain milestone (pillar) for this action plan:")
+    lines.append(f"- [{main_node.id}] {main_node.title}")
+    if main_node.description:
+        lines.append(f"  Description: {main_node.description}")
 
     if profile:
         profile_bits: list[str] = []
@@ -146,95 +163,125 @@ def _build_action_plan_prompt(goal: Goal, breakdowns: list[GoalBreakdown], profi
             lines.append("\nExtended profile context:")
             lines.extend(profile_bits)
 
-    lines.append("\nGoal breakdown context:")
-    lines.extend(_format_breakdown_tree_lines(breakdowns))
+    lines.append("\nSecondary breakdown nodes (use ONLY these as breakdown_ref targets for items):")
+    if secondary_nodes:
+        for node in secondary_nodes:
+            desc = f" — {node.description}" if node.description else ""
+            lines.append(f"- [{node.id}] {node.title}{desc}")
+    else:
+        lines.append(
+            "- (No secondary nodes.) Treat the main milestone as the only scope; "
+            "still return concrete items and set breakdown_ref to the main milestone id when needed."
+        )
+        lines.append(f"- [{main_node.id}] {main_node.title}")
 
     lines.append(
         "\nReturn strict JSON with structure: {\"plan\": {\"title\": string, \"summary\": string}, "
         "\"items\": [{\"title\": string, \"description\": string|null, \"frequency\": string, "
         "\"schedule\": string|null, \"status\": string, \"start_date\": string|null, "
         "\"due_date\": string|null, \"sequence\": number, \"breakdown_ref\": number|string|null}] }"
+        "\nEach item must map to one secondary breakdown id via breakdown_ref (numeric id). "
+        "Produce enough items to operationalize every secondary node; merge only when clearly redundant."
     )
 
     return "\n".join(lines)
 
 
-def _list_breakdowns_for_goal(db: Session, goal_id: int) -> list[GoalBreakdown]:
-    return (
+def _build_breakdown_lookup_for_main(db: Session, goal_id: int, main_breakdown_id: int) -> dict[str, int]:
+    """Allow refs to the main pillar and its direct children only."""
+    lookup: dict[str, int] = {}
+    nodes = (
         db.query(GoalBreakdown)
-        .filter(GoalBreakdown.goal_id == goal_id)
-        .order_by(GoalBreakdown.level.asc(), GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .filter(
+            GoalBreakdown.goal_id == goal_id,
+            or_(GoalBreakdown.id == main_breakdown_id, GoalBreakdown.parent_id == main_breakdown_id),
+        )
         .all()
     )
+    for breakdown in nodes:
+        lookup[str(breakdown.id)] = breakdown.id
+        title_key = _normalize_lookup_key(breakdown.title)
+        if title_key:
+            lookup[title_key] = breakdown.id
+    return lookup
 
 
-def _format_breakdown_tree_lines(breakdowns: list[GoalBreakdown]) -> list[str]:
-    if not breakdowns:
-        return ["- No breakdowns available"]
+def _resolve_breakdown_ref(breakdown_ref: object, breakdown_lookup: dict[str, int]) -> int | None:
+    if breakdown_ref is None:
+        return None
 
-    children_map: dict[int | None, list[GoalBreakdown]] = defaultdict(list)
-    for breakdown in breakdowns:
-        children_map[breakdown.parent_id].append(breakdown)
+    if isinstance(breakdown_ref, int):
+        return breakdown_ref if str(breakdown_ref) in breakdown_lookup else None
 
-    for nodes in children_map.values():
-        nodes.sort(key=lambda item: (item.sequence, item.id))
+    text = str(breakdown_ref).strip()
+    if not text:
+        return None
 
-    lines: list[str] = []
-    limit = max(settings.ACTION_PLAN_CONTEXT_MESSAGE_WINDOW, 1)
-    visited = 0
+    lookup_key = _normalize_lookup_key(text)
+    if lookup_key and lookup_key in breakdown_lookup:
+        return breakdown_lookup[lookup_key]
 
-    def walk(node_list: list[GoalBreakdown], depth: int = 0) -> None:
-        nonlocal visited
-        for node in node_list:
-            if visited >= limit:
-                return
-            indent = "  " * depth
-            description = f" - {node.description}" if node.description else ""
-            due_date = f", due {node.due_date}" if node.due_date else ""
-            lines.append(
-                f"{indent}- [{node.id}] {node.title}{description}"
-                f" (level={node.level}, status={node.status}{due_date})"
-            )
-            visited += 1
-            walk(children_map.get(node.id, []), depth + 1)
+    if text.isdigit() and text in breakdown_lookup:
+        return breakdown_lookup[text]
 
-    walk(children_map.get(None, []))
+    return None
 
-    if visited >= limit and len(breakdowns) > limit:
-        lines.append(f"- ... truncated at {limit} nodes for context budget")
 
-    return lines
+def _sync_aggregate_plan_and_main_status(db: Session, plan: ActionPlan) -> None:
+    items = (
+        db.query(ActionPlanItem)
+        .filter(ActionPlanItem.plan_id == plan.id)
+        .order_by(ActionPlanItem.sequence.asc(), ActionPlanItem.id.asc())
+        .all()
+    )
+    total = len(items)
+    completed = sum(1 for item in items if item.status == ActionPlanStatus.COMPLETED.value)
+    if total == 0:
+        plan.status = ActionPlanStatus.PENDING.value
+    elif completed == total:
+        plan.status = ActionPlanStatus.COMPLETED.value
+    elif completed > 0:
+        plan.status = ActionPlanStatus.IN_PROGRESS.value
+    else:
+        plan.status = ActionPlanStatus.PENDING.value
+
+    bd = db.query(GoalBreakdown).filter(GoalBreakdown.id == plan.main_breakdown_id).first()
+    if bd:
+        if total == 0:
+            pass
+        elif completed == total:
+            bd.status = GoalBreakdownStatus.COMPLETED.value
+        elif completed > 0:
+            bd.status = GoalBreakdownStatus.IN_PROGRESS.value
+        else:
+            bd.status = GoalBreakdownStatus.PENDING.value
+        db.add(bd)
+    db.add(plan)
 
 
 def _upsert_action_plan(
     db: Session,
     goal: Goal,
     payload: dict,
-    existing_plan: ActionPlan | None = None,
+    *,
+    existing_plan: ActionPlan,
 ) -> ActionPlan:
     plan_data = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
     items_data = payload.get("items") if isinstance(payload.get("items"), list) else []
 
-    plan = existing_plan or get_action_plan_for_goal(db, goal.user_id, goal.id)
-    if plan is None:
-        plan = ActionPlan(goal_id=goal.id, title=_normalize_plan_title(goal, plan_data), summary=_normalize_text(plan_data.get("summary")))
-        db.add(plan)
-        db.flush()
-    else:
-        plan.title = _normalize_plan_title(goal, plan_data)
-        plan.summary = _normalize_text(plan_data.get("summary"))
+    plan = existing_plan
+    plan.title = _normalize_plan_title(goal, plan_data)
+    plan.summary = _normalize_text(plan_data.get("summary"))
 
     plan.error_message = None
-
-    plan.status = _normalize_status(plan_data.get("status"), default=ActionPlanStatus.PENDING.value)
 
     db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
 
     normalized_items = _normalize_items_payload(items_data)
     if not normalized_items:
-        logger.warning("Action plan generation produced no items for goal_id=%s", goal.id)
+        logger.warning("Action plan generation produced no items for goal_id=%s plan_id=%s", goal.id, plan.id)
 
-    breakdown_lookup = _build_breakdown_lookup(db, goal.id)
+    breakdown_lookup = _build_breakdown_lookup_for_main(db, goal.id, plan.main_breakdown_id)
 
     for item_data in normalized_items:
         breakdown_ref = item_data.get("breakdown_ref")
@@ -272,6 +319,8 @@ def _upsert_action_plan(
                 refresh=False,
             )
 
+    db.flush()
+    _sync_aggregate_plan_and_main_status(db, plan)
     db.commit()
     db.refresh(plan)
     return plan
@@ -327,38 +376,133 @@ def _normalize_status(value: object, *, default: str) -> str:
     return default
 
 
-def prepare_action_plan_for_goal(
+def prepare_action_plans_for_goal(
     db: Session,
     user_id: int,
     goal_id: int,
     *,
     reset_items: bool = False,
-) -> ActionPlan | None:
+) -> list[ActionPlan]:
+    """Create or reset placeholder rows for each root breakdown (one action plan article per main pillar)."""
     goal = _get_goal_for_user(db, user_id, goal_id)
     if not goal:
-        return None
+        return []
 
-    plan = get_action_plan_for_goal(db, user_id, goal_id)
-    if plan is None:
-        plan = ActionPlan(
-            goal_id=goal.id,
-            title=f"{goal.title} Action Plan",
-            summary=None,
-            status=ActionPlanStatus.IN_PROGRESS.value,
-            error_message=None,
+    roots = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.goal_id == goal_id, GoalBreakdown.parent_id.is_(None))
+        .order_by(GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .all()
+    )
+
+    out: list[ActionPlan] = []
+    for root in roots:
+        plan = (
+            db.query(ActionPlan)
+            .filter(ActionPlan.goal_id == goal_id, ActionPlan.main_breakdown_id == root.id)
+            .first()
         )
-        db.add(plan)
-        db.flush()
-    else:
-        plan.status = ActionPlanStatus.IN_PROGRESS.value
-        plan.error_message = None
+        if plan is None:
+            plan = ActionPlan(
+                goal_id=goal.id,
+                main_breakdown_id=root.id,
+                title=f"{root.title} — 行动计划",
+                summary=None,
+                status=ActionPlanStatus.IN_PROGRESS.value,
+                error_message=None,
+            )
+            db.add(plan)
+            db.flush()
+        else:
+            plan.status = ActionPlanStatus.IN_PROGRESS.value
+            plan.error_message = None
 
-    if reset_items:
-        db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
+        if reset_items:
+            db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).delete(synchronize_session=False)
+
+        out.append(plan)
 
     db.commit()
-    db.refresh(plan)
-    return plan
+    for plan in out:
+        db.refresh(plan)
+    return out
+
+
+def sync_goal_deadlines(db: Session, goal: Goal) -> None:
+    """After goal target date, mark unfinished main pillars (and their plans) as failed."""
+    if not goal.target_date:
+        return
+    try:
+        due = date.fromisoformat(str(goal.target_date)[:10])
+    except ValueError:
+        return
+    if date.today() <= due:
+        return
+
+    roots = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.goal_id == goal.id, GoalBreakdown.parent_id.is_(None))
+        .all()
+    )
+    changed = False
+    for root in roots:
+        if root.status == GoalBreakdownStatus.COMPLETED.value:
+            continue
+        plan = (
+            db.query(ActionPlan)
+            .filter(ActionPlan.goal_id == goal.id, ActionPlan.main_breakdown_id == root.id)
+            .first()
+        )
+        if plan and plan.status == ActionPlanStatus.COMPLETED.value:
+            continue
+        if root.status != GoalBreakdownStatus.FAILED.value:
+            root.status = GoalBreakdownStatus.FAILED.value
+            db.add(root)
+            changed = True
+        if plan and plan.status not in (ActionPlanStatus.COMPLETED.value, ActionPlanStatus.FAILED.value):
+            plan.status = ActionPlanStatus.FAILED.value
+            if not plan.error_message:
+                plan.error_message = "已超过目标截止日期且仍有未完成项。"
+            db.add(plan)
+            changed = True
+    if changed:
+        db.commit()
+
+
+def list_main_action_plan_progress(db: Session, goal_id: int) -> list[dict]:
+    roots = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.goal_id == goal_id, GoalBreakdown.parent_id.is_(None))
+        .order_by(GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .all()
+    )
+    out: list[dict] = []
+    for root in roots:
+        plan = (
+            db.query(ActionPlan)
+            .filter(ActionPlan.goal_id == goal_id, ActionPlan.main_breakdown_id == root.id)
+            .first()
+        )
+        total_items = 0
+        completed_items = 0
+        plan_id: int | None = None
+        plan_status: str | None = None
+        if plan:
+            plan_id = plan.id
+            plan_status = plan.status
+            items = db.query(ActionPlanItem).filter(ActionPlanItem.plan_id == plan.id).all()
+            total_items = len(items)
+            completed_items = sum(1 for item in items if item.status == ActionPlanStatus.COMPLETED.value)
+        out.append(
+            {
+                "main_breakdown_id": root.id,
+                "plan_id": plan_id,
+                "plan_status": plan_status,
+                "total_items": total_items,
+                "completed_items": completed_items,
+            }
+        )
+    return out
 
 
 def prepare_action_plan_for_refresh(
@@ -443,39 +587,71 @@ def _normalize_sequence(value: object, fallback: int) -> int:
         return fallback
 
 
-def _build_breakdown_lookup(db: Session, goal_id: int) -> dict[str, int]:
-    lookup: dict[str, int] = {}
-    for breakdown in _list_breakdowns_for_goal(db, goal_id):
-        lookup[str(breakdown.id)] = breakdown.id
-        title_key = _normalize_lookup_key(breakdown.title)
-        if title_key:
-            lookup[title_key] = breakdown.id
-    return lookup
-
-
-def _resolve_breakdown_ref(value: object, breakdown_lookup: dict[str, int]) -> int | None:
-    if value is None:
-        return None
-
-    if isinstance(value, int):
-        return value if str(value) in breakdown_lookup else None
-
-    text = str(value).strip()
-    if not text:
-        return None
-
-    lookup_key = _normalize_lookup_key(text)
-    if lookup_key and lookup_key in breakdown_lookup:
-        return breakdown_lookup[lookup_key]
-
-    if text.isdigit() and text in breakdown_lookup:
-        return breakdown_lookup[text]
-
-    return None
-
-
 def _normalize_lookup_key(value: object) -> str | None:
     if value is None:
         return None
     text = str(value).strip().lower()
     return text or None
+
+
+def update_action_plan_item_completion(
+    db: Session,
+    user_id: int,
+    plan_id: int,
+    item_id: int,
+    *,
+    completed: bool,
+) -> ActionPlanItem | None:
+    """Mark an action plan item completed or not; completion syncs a growth record (idempotent)."""
+    item = (
+        db.query(ActionPlanItem)
+        .join(ActionPlan, ActionPlan.id == ActionPlanItem.plan_id)
+        .join(Goal, Goal.id == ActionPlan.goal_id)
+        .filter(
+            ActionPlanItem.id == item_id,
+            ActionPlanItem.plan_id == plan_id,
+            Goal.user_id == user_id,
+        )
+        .first()
+    )
+    if not item:
+        return None
+
+    idem = f"action-plan-item-{item_id}-completed"
+
+    if completed:
+        item.status = ActionPlanStatus.COMPLETED.value
+        goal = db.query(Goal).filter(Goal.id == item.plan.goal_id).first()
+        goal_title = goal.title if goal else ""
+        title = f"完成行动：{item.title}"
+        summary_parts: list[str] = []
+        if item.description:
+            summary_parts.append(str(item.description))
+        if goal_title:
+            summary_parts.append(f"关联目标：{goal_title}")
+        create_growth_record(
+            db,
+            user_id,
+            title=title[:255],
+            summary="\n".join(summary_parts) if summary_parts else None,
+            content=None,
+            record_type=GrowthRecordType.ACTION_PLAN.value,
+            source_type=GrowthRecordSource.ACTION_PLAN.value,
+            source_ref_id=item_id,
+            score=3,
+            idempotency_key=idem,
+            commit=False,
+            refresh=False,
+        )
+    else:
+        item.status = ActionPlanStatus.PENDING.value
+        void_growth_record_by_idempotency_key(db, user_id, idem, commit=False)
+
+    db.add(item)
+    db.flush()
+    plan_row = db.query(ActionPlan).filter(ActionPlan.id == plan_id).first()
+    if plan_row:
+        _sync_aggregate_plan_and_main_status(db, plan_row)
+    db.commit()
+    db.refresh(item)
+    return item

@@ -1,6 +1,6 @@
 from enum import Enum
 
-from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, func, text
+from sqlalchemy import Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
 from sqlalchemy.orm import relationship
 
@@ -28,13 +28,19 @@ UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
 
 class ActionPlan(Base):
     __tablename__ = "action_plans"
+    __table_args__ = (UniqueConstraint("goal_id", "main_breakdown_id", name="uq_action_plan_goal_main_breakdown"),)
 
     id = Column(UnsignedInt, primary_key=True, index=True)
     goal_id = Column(
         UnsignedInt,
         ForeignKey("goals.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
+        index=True,
+    )
+    main_breakdown_id = Column(
+        UnsignedInt,
+        ForeignKey("goal_breakdowns.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )
 
@@ -54,7 +60,7 @@ class ActionPlan(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    goal = relationship("Goal", back_populates="action_plan")
+    goal = relationship("Goal", back_populates="action_plans")
     items = relationship(
         "ActionPlanItem",
         back_populates="plan",

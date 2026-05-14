@@ -1,3 +1,5 @@
+import json
+
 from app.services import chat_service
 
 
@@ -70,11 +72,31 @@ def test_action_plan_completion_writes_record(client, monkeypatch):
     token = login_student(client, student["username"]) 
     headers = {"Authorization": f"Bearer {token}"}
 
-    # create a goal with breakdowns mocked
-    monkeypatch.setattr(chat_service, "build_goal_breakdown_response", lambda message: '{"breakdowns": []}')
+    breakdown_json = json.dumps(
+        {
+            "breakdowns": [
+                {
+                    "title": "Main",
+                    "description": None,
+                    "children": [{"title": "Sub", "description": None, "children": []}],
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(chat_service, "build_goal_breakdown_response", lambda message: breakdown_json)
+    monkeypatch.setattr(
+        chat_service,
+        "build_action_plan_response",
+        lambda msg: json.dumps({"plan": {"title": "Plan1", "summary": "s"}, "items": []}),
+    )
+
     create_goal = client.post("/goals", json={"title": "G1", "description": "desc"}, headers=headers)
     assert create_goal.status_code == 201
     goal_id = create_goal.json()["id"]
+
+    detail_goal = client.get(f"/goals/{goal_id}", headers=headers)
+    assert detail_goal.status_code == 200
+    assert detail_goal.json()["breakdowns"]["root_nodes"]
 
     # mock action plan generation to return one completed item
     def mock_action_plan(_):
@@ -84,7 +106,9 @@ def test_action_plan_completion_writes_record(client, monkeypatch):
 
     resp = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
     assert resp.status_code == 202
-    plan_id = resp.json()["id"]
+    created = resp.json()
+    assert isinstance(created, list)
+    plan_id = created[0]["id"]
 
     # poll for plan ready
     detail = None

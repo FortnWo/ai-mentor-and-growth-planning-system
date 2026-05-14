@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
     description     TEXT NULL,
     level           TINYINT UNSIGNED NOT NULL DEFAULT 0,
     sequence        SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-    status          ENUM('pending', 'in_progress', 'completed') NOT NULL DEFAULT 'pending',
+    status          ENUM('pending', 'in_progress', 'completed', 'failed') NOT NULL DEFAULT 'pending',
     due_date        DATE NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
 -- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS action_plans (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    goal_id INT UNSIGNED NOT NULL UNIQUE,
+    goal_id INT UNSIGNED NOT NULL,
+    main_breakdown_id INT UNSIGNED NOT NULL,
     title VARCHAR(255) NOT NULL,
     summary TEXT NULL,
     status ENUM('pending', 'in_progress', 'completed', 'archived', 'failed') NOT NULL DEFAULT 'pending',
@@ -129,7 +130,10 @@ CREATE TABLE IF NOT EXISTS action_plans (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_action_plans_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
-    INDEX idx_action_plans_goal (goal_id)
+    CONSTRAINT fk_action_plans_main_breakdown FOREIGN KEY (main_breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_action_plan_goal_main_breakdown (goal_id, main_breakdown_id),
+    INDEX idx_action_plans_goal (goal_id),
+    INDEX idx_action_plans_main_breakdown (main_breakdown_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 -- -------------------------------------------------------
 -- Action plan items
