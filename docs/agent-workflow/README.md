@@ -1,40 +1,40 @@
-# Agent Workflow
+# 代理工作流
 
-This directory defines the shared Markdown contract for semi-automatic collaboration between the strategist and engineer agents.
+此目录定义了策略代理与工程代理之间半自动协作所使用的共享 Markdown 协议。
 
-## Purpose
+## 目的
 
-The strategist writes the task definition once.
-The engineer reads the same document, executes the task, and writes back implementation status.
-The user only intervenes when a decision is blocked or a scope conflict appears.
+策略代理负责一次性写入任务定义。
+工程代理读取同一份文档，执行任务，并回写实现状态。
+只有在决策被阻塞或作用域冲突出现时，用户才需要介入。
 
-## Files
+## 文件
 
-- `current-task.md`: live shared task sheet for the active task.
-- `task-template.md`: reusable blank template for new tasks.
+- `current-task.md`：当前任务的实时共享任务表。
+- `task-template.md`：用于新任务的可复用空白模板。
 
-## Ownership Rules
+## 归属规则
 
-- Strategist owns goals, scope, constraints, acceptance criteria, and decision records.
-- Engineer owns implementation notes, validation results, and execution risks.
-- The user owns final scope approval when the two agents need a decision.
+- 策略代理负责目标、范围、约束、验收标准和决策记录。
+- 工程代理负责实现说明、验证结果和执行风险。
+- 当两个代理需要决策时，最终范围确认由用户负责。
 
-## Status Flow
+## 状态流转
 
-Draft -> Ready -> In Progress -> Blocked -> Done
+草稿 -> 就绪 -> 进行中 -> 阻塞 -> 完成
 
-## Writing Rules
+## 写作规则
 
-- Keep headings stable so the other agent can parse the document reliably.
-- Do not rewrite unrelated sections when updating progress.
-- Put open questions in the blocker section instead of burying them in prose.
-- When a decision is made, record it in the decision log before changing status.
+- 保持标题稳定，方便另一侧代理可靠解析文档。
+- 更新进度时，不要重写无关章节。
+- 将未决问题放入阻塞部分，不要埋在正文中。
+- 一旦做出决策，先记录到决策日志，再修改状态。
 
-## Recommended Use
+## 推荐用法
 
-1. The strategist fills a new task into `current-task.md`.
-2. The strategist marks the task as `Ready`.
-3. The engineer reads the same file, changes status to `In Progress`, and starts work.
-4. The engineer appends validation and execution notes.
-5. If blocked, the engineer records the blocker and waits for a decision.
-6. After validation passes, the engineer marks the task `Done`.
+1. 策略代理先把新任务填入 `current-task.md`。
+2. 策略代理将任务标记为 `Ready`。
+3. 工程代理读取同一文件，把状态改为 `In Progress` 并开始工作。
+4. 工程代理追加验证和执行记录。
+5. 如果被阻塞，工程代理记录阻塞项并等待决策。
+6. 验证通过后，工程代理将任务标记为 `Done`。

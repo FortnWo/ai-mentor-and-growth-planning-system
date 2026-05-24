@@ -1,58 +1,58 @@
-# Task Template
+# 任务模板
 
-## 1. Metadata
+## 1. 元数据
 
-- Task ID:
-- Title:
-- Status: Draft | Ready | In Progress | Blocked | Done
-- Priority: P0 | P1 | P2
-- Owner:
-- Updated At:
+- 任务 ID：
+- 标题：
+- 状态：草稿 | 就绪 | 进行中 | 阻塞 | 完成
+- 优先级：P0 | P1 | P2
+- 负责人：
+- 更新时间：
 
-## 2. Task Core
+## 2. 任务核心
 
-- Goal:
-- Scope:
-- Out of Scope:
-- Success Criteria:
+- 目标：
+- 范围：
+- 不包含：
+- 成功标准：
 
-## 3. Constraints and Assumptions
+## 3. 约束与假设
 
-- Technical Constraints:
-- Product Constraints:
-- Assumptions:
+- 技术约束：
+- 产品约束：
+- 假设：
 
-## 4. Files and Module Scope
+## 4. 文件与模块范围
 
-- Target Files:
-- Related Modules:
-- Reusable Code:
+- 目标文件：
+- 相关模块：
+- 可复用代码：
 
-## 5. Interface and Data Contract
+## 5. 接口与数据契约
 
-- Inputs:
-- Outputs:
-- Error Cases:
-- Data Shape:
+- 输入：
+- 输出：
+- 错误场景：
+- 数据形态：
 
-## 6. Strategist Decisions
+## 6. 策略代理决策
 
-- Decision Log:
-- Open Questions:
+- 决策日志：
+- 待确认问题：
 
-## 7. Engineer Execution Log
+## 7. 工程执行日志
 
-- Implementation Notes:
-- Change Summary:
-- Validation Results:
+- 实施说明：
+- 变更摘要：
+- 验证结果：
 
-## 8. Blockers and Follow-ups
+## 8. 阻塞与后续
 
-- Blockers:
-- Required User Decisions:
-- Next Step:
+- 阻塞项：
+- 需要用户决策：
+- 下一步：
 
-## 9. Handoff Summary
+## 9. 交接摘要
 
-- What the next agent should read first:
-- What must not be changed without confirmation:
+- 下一位代理应优先阅读：
+- 未经确认不得改动：

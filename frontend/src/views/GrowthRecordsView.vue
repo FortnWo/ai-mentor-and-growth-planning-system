@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
@@ -36,6 +35,8 @@ const rangeStats = ref({
     growth_score: 0,
     consecutive_days: 0,
 })
+
+let echarts: typeof import('echarts') | null = null
 
 const lineRef = ref<HTMLDivElement | null>(null)
 const barRef = ref<HTMLDivElement | null>(null)
@@ -208,10 +209,12 @@ function buildBarOption(points: GrowthDailyTrendPoint[]): EChartsOption {
                 barMaxWidth: 22,
                 data: minutes,
                 itemStyle: {
-                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                        { offset: 0, color: 'rgba(6,182,212,0.95)' },
-                        { offset: 1, color: 'rgba(37,99,235,0.35)' },
-                    ]),
+                    color: ((echarts as any)?.graphic
+                        ? new (echarts as any).graphic.LinearGradient(0, 0, 0, 1, [
+                              { offset: 0, color: 'rgba(6,182,212,0.95)' },
+                              { offset: 1, color: 'rgba(37,99,235,0.35)' },
+                          ])
+                        : undefined),
                 },
             },
             {
@@ -220,10 +223,12 @@ function buildBarOption(points: GrowthDailyTrendPoint[]): EChartsOption {
                 barMaxWidth: 22,
                 data: scores,
                 itemStyle: {
-                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                        { offset: 0, color: 'rgba(34,197,94,0.9)' },
-                        { offset: 1, color: 'rgba(34,197,94,0.2)' },
-                    ]),
+                    color: ((echarts as any)?.graphic
+                        ? new (echarts as any).graphic.LinearGradient(0, 0, 0, 1, [
+                              { offset: 0, color: 'rgba(34,197,94,0.9)' },
+                              { offset: 1, color: 'rgba(34,197,94,0.2)' },
+                          ])
+                        : undefined),
                 },
             },
         ],
@@ -233,10 +238,14 @@ function buildBarOption(points: GrowthDailyTrendPoint[]): EChartsOption {
 function renderCharts() {
     const pts = trendPoints.value
     if (!lineRef.value || !barRef.value) return
-    if (!lineChart) lineChart = echarts.init(lineRef.value)
-    if (!barChart) barChart = echarts.init(barRef.value)
-    lineChart.setOption(buildLineOption(pts), true)
-    barChart.setOption(buildBarOption(pts), true)
+    if (!echarts) return
+    if (!lineChart) lineChart = (echarts as any).init(lineRef.value)
+    if (!barChart) barChart = (echarts as any).init(barRef.value)
+    const currentLineChart = lineChart
+    const currentBarChart = barChart
+    if (!currentLineChart || !currentBarChart) return
+    currentLineChart.setOption(buildLineOption(pts), true)
+    currentBarChart.setOption(buildBarOption(pts), true)
 }
 
 function disposeCharts() {
@@ -363,6 +372,16 @@ watch(
 onMounted(async () => {
     if (!authState.user) {
         await refreshCurrentUser()
+    }
+    // Dynamic import of echarts to avoid SSR/runtime import issues
+    if (typeof window !== 'undefined') {
+        try {
+            const mod = await import('echarts')
+            echarts = mod as typeof import('echarts')
+        } catch (e) {
+            // ignore: load failures will be surfaced when rendering charts
+            echarts = null
+        }
     }
     await load()
     await loadTrend()

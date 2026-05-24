@@ -80,6 +80,8 @@ npm run dev
 
 前端地址：http://localhost:5173
 
+前端依赖清单：`frontend/package.json` 是实际安装源，`frontend/requirements.txt` 提供一份按后端习惯整理好的依赖清单，便于新拉取项目后快速核对本地环境。
+
 生产构建：
 
 ```bash
@@ -105,6 +107,16 @@ npm run build
 
 - `VITE_API_BASE_URL`：后端基础地址，默认 `http://localhost:8000`。
 - `VITE_WS_BASE`：可选的 WebSocket 基础地址（用于开发 / 代理自定义）。
+
+### 前端依赖初始化
+
+如果你只想一次性把前端环境装好，请在 `frontend/` 目录执行：
+
+```bash
+npm install
+```
+
+前端可用依赖已经整理在 `frontend/requirements.txt` 中，适合作为新环境初始化和代码审查时的参考清单。实际安装仍以 `package.json` 为准。
 
 ## 接口总览
 
