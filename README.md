@@ -142,9 +142,9 @@ npm run build
 | GET | `/action-plans/{plan_id}` | 获取行动计划详情 |
 | POST | `/action-plans/{plan_id}/refresh` | 异步刷新行动计划 |
 | DELETE | `/action-plans/{plan_id}` | 删除行动计划 |
-| GET | `/profile/extended/me` | 获取扩展画像（缺失时自动创建） |
-| PUT | `/profile/extended/me` | 更新扩展画像 |
-| POST | `/profile/extended/me/refresh-from-chat` | 根据聊天历史重建扩展画像 |
+| GET | `/profile/extended/me` | 获取用户画像（缺失时自动创建） |
+| PUT | `/profile/extended/me` | 更新用户画像 |
+| POST | `/profile/extended/me/refresh-from-chat` | 根据聊天历史重建用户画像 |
 
 ### WebSocket
 

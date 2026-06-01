@@ -84,13 +84,19 @@ class User(Base):
 
     @property
     def admin_permissions(self) -> list[str]:
-        if not self._admin_permissions_json:
+        raw = self._admin_permissions_json
+        if raw is None or raw == "":
             return []
 
-        try:
-            raw_permissions = json.loads(self._admin_permissions_json)
-        except json.JSONDecodeError:
+        if isinstance(raw, list):
+            raw_permissions = raw
+        elif isinstance(raw, dict):
             return []
+        else:
+            try:
+                raw_permissions = json.loads(str(raw))
+            except (json.JSONDecodeError, TypeError):
+                return []
 
         if not isinstance(raw_permissions, list):
             return []

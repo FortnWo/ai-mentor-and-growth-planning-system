@@ -1,7 +1,7 @@
 import logging
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -9,8 +9,14 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.action_plan import ActionPlanStatus
 from app.models.user import User
-from app.schemas.action_plan import ActionPlanCreate, ActionPlanDetailRead, ActionPlanRead
-from app.services import plan_service
+from app.schemas.action_plan import (
+    ActionPlanCreate,
+    ActionPlanDetailRead,
+    ActionPlanItemCompletionUpdate,
+    ActionPlanItemRead,
+    ActionPlanRead,
+)
+from app.services import goal_service, plan_service
 
 router = APIRouter(prefix="/action-plans", tags=["action-plans"])
 error_logger = logging.getLogger("ai_mentor.errors")
@@ -40,7 +46,7 @@ def _process_action_plan_in_background(plan_id: int, user_id: int) -> None:
         db.close()
 
 
-@router.post("", response_model=ActionPlanDetailRead, status_code=status.HTTP_202_ACCEPTED)
+@router.post("", response_model=list[ActionPlanDetailRead], status_code=status.HTTP_202_ACCEPTED)
 def create_action_plan(
     payload: ActionPlanCreate,
     background_tasks: BackgroundTasks,
@@ -50,28 +56,42 @@ def create_action_plan(
     if not settings.ACTION_PLAN_ENABLED:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Action plan feature is disabled")
 
-    existing_plan = plan_service.get_plan_for_goal(db, current_user.id, payload.goal_id)
-    already_in_progress = bool(existing_plan and existing_plan.status == ActionPlanStatus.IN_PROGRESS.value)
+    goal = goal_service.get_goal_for_user(db, current_user.id, payload.goal_id)
+    if not goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+
+    existing = plan_service.list_plans_for_goal(db, current_user.id, payload.goal_id)
+    already_in_progress = any(plan.status == ActionPlanStatus.IN_PROGRESS.value for plan in existing)
     if already_in_progress:
-        plan = existing_plan
-    else:
-        plan = plan_service.prepare_plan_for_goal(db, current_user.id, payload.goal_id, reset_items=False)
-        if not plan:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        details: list[ActionPlanDetailRead] = []
+        for plan in existing:
+            detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
+            if detail:
+                details.append(detail)
+        return details
+
+    prepared = plan_service.prepare_plans_for_goal(db, current_user.id, payload.goal_id, reset_items=False)
+    for plan in prepared:
         background_tasks.add_task(_process_action_plan_in_background, plan.id, current_user.id)
 
-    detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
-    if not detail:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
-    return detail
+    out: list[ActionPlanDetailRead] = []
+    for plan in prepared:
+        detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
+        if detail:
+            out.append(detail)
+    return out
 
 
 @router.get("", response_model=list[ActionPlanRead])
 def list_action_plans(
+    goal_id: int | None = Query(default=None, ge=1),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    plans = plan_service.list_plans_for_user(db, current_user.id)
+    if goal_id is not None:
+        plans = plan_service.list_plans_for_goal(db, current_user.id, goal_id)
+    else:
+        plans = plan_service.list_plans_for_user(db, current_user.id)
     return [ActionPlanRead.model_validate(plan) for plan in plans]
 
 
@@ -85,6 +105,26 @@ def get_action_plan_detail(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
     return plan
+
+
+@router.patch("/{plan_id}/items/{item_id}", response_model=ActionPlanItemRead)
+def patch_action_plan_item_completion(
+    plan_id: int,
+    item_id: int,
+    payload: ActionPlanItemCompletionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    item = plan_service.update_item_completion(
+        db,
+        current_user.id,
+        plan_id,
+        item_id,
+        completed=payload.completed,
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan item not found")
+    return ActionPlanItemRead.model_validate(item)
 
 
 @router.post("/{plan_id}/refresh", response_model=ActionPlanDetailRead, status_code=status.HTTP_202_ACCEPTED)

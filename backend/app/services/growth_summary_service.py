@@ -9,7 +9,12 @@ def create_weekly_summary(db: Session, user_id: int, start_date: date, end_date:
     # build a short narrative from recent records and request an AI to create a warm weekly summary
     records = (
         db.query(GrowthRecord)
-        .filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None), GrowthRecord.record_date >= start_date.isoformat(), GrowthRecord.record_date <= end_date.isoformat())
+        .filter(
+            GrowthRecord.user_id == user_id,
+            GrowthRecord.deleted_at.is_(None),
+            GrowthRecord.record_date >= start_date,
+            GrowthRecord.record_date <= end_date,
+        )
         .order_by(GrowthRecord.occurred_at.asc())
         .all()
     )

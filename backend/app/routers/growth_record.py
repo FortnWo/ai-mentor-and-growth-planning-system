@@ -6,7 +6,13 @@ from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.core.security import get_current_user
 from app.models.user import User
-from app.schemas.growth_record import GrowthRecordCreate, GrowthRecordRead, GrowthRecordListItem, GrowthRecordStats
+from app.schemas.growth_record import (
+    GrowthRecordCreate,
+    GrowthRecordRead,
+    GrowthRecordListItem,
+    GrowthRecordStats,
+    GrowthDailyTrendPoint,
+)
 from app.schemas.growth_summary import GrowthSummaryCreate, GrowthSummaryRead
 from app.services import growth_service
 
@@ -77,6 +83,16 @@ def stats(start_date: str | None = None, end_date: str | None = None, current_us
     data = growth_service.get_growth_stats(db, current_user.id, start_date=start_date, end_date=end_date)
     return GrowthRecordStats.model_validate(data)
 
+
+@router.get("/trend/daily", response_model=list[GrowthDailyTrendPoint])
+def daily_trend(
+    start_date: str,
+    end_date: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = growth_service.daily_trend_for_user(db, current_user.id, start_date=start_date, end_date=end_date)
+    return [GrowthDailyTrendPoint.model_validate(r) for r in rows]
 
 
 @router.post("/summary/generate", response_model=GrowthSummaryRead, status_code=status.HTTP_202_ACCEPTED)

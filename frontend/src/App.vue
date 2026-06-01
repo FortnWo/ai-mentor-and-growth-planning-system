@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useRoute, useRouter } from 'vue-router'
 
+import ThemeToggle from './components/ThemeToggle.vue'
 import { authState, clearAuthSession, isAdmin, loadStoredAuthState, refreshCurrentUser } from './stores/auth'
 
 const router = useRouter()
@@ -25,7 +26,7 @@ const workspaceTitle = computed(() => {
   }
 
   if (route.path === '/profile/extended') {
-    return '扩展画像实验室'
+    return '用户画像实验室'
   }
 
   if (route.path === '/profile') {
@@ -76,11 +77,11 @@ const navigationItems = computed(() => {
 
   return [
     { to: '/chat', label: '聊天' },
-    { to: '/profile', label: '我的资料' },
-    { to: '/profile/extended', label: '扩展画像' },
-    { to: '/plan', label: '成长计划' },
+    { to: '/profile/extended', label: '用户画像' },
+    { to: '/plan', label: '目标计划' },
     { to: '/growth', label: '成长记录' },
     ...(admin.value ? [{ to: '/admin/users', label: '用户管理' }] : []),
+    { to: '/profile', label: '我的资料' },
   ]
 })
 
@@ -151,12 +152,16 @@ async function logout() {
           {{ item.label }}
         </RouterLink>
 
+        <ThemeToggle />
+
         <button v-if="authenticated" class="button button--ghost nav-button" type="button" @click="logout">
           退出登录
         </button>
       </nav>
 
       <div class="header-actions">
+        <ThemeToggle />
+
         <RouterLink v-if="!authenticated" class="button button--primary login-button" to="/login"
           @click="closeMobileMenu">
           登录
@@ -173,9 +178,12 @@ async function logout() {
       <div v-if="mobileMenuOpen" class="mobile-menu glass-card">
         <div class="mobile-menu__top">
           <span class="eyebrow">导航</span>
-          <button class="button button--ghost mobile-close" type="button" @click="closeMobileMenu">
-            ×
-          </button>
+          <div class="mobile-menu__top-actions">
+            <ThemeToggle />
+            <button class="button button--ghost mobile-close" type="button" @click="closeMobileMenu">
+              ×
+            </button>
+          </div>
         </div>
 
         <RouterLink v-for="item in navigationItems" :key="item.to" :to="item.to" class="mobile-link"
@@ -275,9 +283,9 @@ async function logout() {
   width: 2.8rem;
   height: 2.8rem;
   border-radius: 18px;
-  color: #eff6ff;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.95), rgba(37, 99, 235, 0.95));
-  box-shadow: 0 18px 28px rgba(6, 182, 212, 0.18);
+  color: var(--button-text);
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 18px 28px rgba(var(--accent-1-rgb), 0.18);
 }
 
 .brand-copy {
@@ -287,7 +295,7 @@ async function logout() {
 }
 
 .brand-copy strong {
-  color: #f8fbff;
+  color: var(--heading);
   font-family: var(--font-display);
   letter-spacing: -0.03em;
 }
@@ -302,9 +310,9 @@ async function logout() {
   align-items: center;
   gap: 0.45rem;
   padding: 0.55rem 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.56);
+  background: var(--surface);
 }
 
 .status-dot {
@@ -337,9 +345,9 @@ async function logout() {
 
 .nav-link:hover,
 .nav-link.router-link-active {
-  color: #f8fbff;
-  border-color: rgba(6, 182, 212, 0.24);
-  background: rgba(6, 182, 212, 0.08);
+  color: var(--nav-active-text);
+  border-color: rgba(var(--accent-1-rgb), 0.24);
+  background: rgba(var(--accent-1-rgb), 0.08);
   transform: translateY(-1px);
 }
 
@@ -412,6 +420,12 @@ async function logout() {
     gap: 1rem;
   }
 
+  .mobile-menu__top-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   .mobile-close {
     min-height: 38px;
     padding-inline: 0.85rem;
@@ -421,14 +435,15 @@ async function logout() {
     display: block;
     padding: 0.85rem 1rem;
     border-radius: 16px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    background: rgba(15, 23, 42, 0.55);
-    color: #d8e7f7;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
   }
 
   .mobile-link.router-link-active {
-    border-color: rgba(6, 182, 212, 0.24);
-    background: rgba(6, 182, 212, 0.08);
+    border-color: rgba(var(--accent-1-rgb), 0.24);
+    background: rgba(var(--accent-1-rgb), 0.08);
+    color: var(--nav-active-text);
   }
 
   .mobile-logout {

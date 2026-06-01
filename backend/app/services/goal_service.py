@@ -10,6 +10,7 @@ from app.schemas.goal import (
     GoalDetailRead,
     GoalBreakdownNode,
     GoalBreakdownTree,
+    MainActionPlanProgress,
 )
 import app.services.breakdown_service as breakdown_service
 
@@ -109,11 +110,20 @@ def _get_goal_breakdown_tree(db: Session, goal: Goal) -> GoalBreakdownTree:
 
 def get_goal_detail_for_user(db: Session, user_id: int, goal_id: int) -> GoalDetailRead | None:
     """获取目标详情包含拆解树"""
+    import app.services.action_plan_service as action_plan_service
+
     goal = get_goal_for_user(db, user_id, goal_id)
     if not goal:
         return None
 
+    # 超过截止日期时，将未完成的主节点与行动计划标记为失败
+    action_plan_service.sync_goal_deadlines(db, goal)
+    db.refresh(goal)
+
     breakdown_tree = _get_goal_breakdown_tree(db, goal)
+
+    progress_rows = action_plan_service.list_main_action_plan_progress(db, goal.id)
+    main_action_plan_progress = [MainActionPlanProgress.model_validate(row) for row in progress_rows]
 
     return GoalDetailRead(
         id=goal.id,
@@ -126,6 +136,7 @@ def get_goal_detail_for_user(db: Session, user_id: int, goal_id: int) -> GoalDet
         created_at=goal.created_at,
         updated_at=goal.updated_at,
         breakdowns=breakdown_tree,
+        main_action_plan_progress=main_action_plan_progress,
     )
 
 

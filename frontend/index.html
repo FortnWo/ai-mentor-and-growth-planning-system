@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Mentor | Growth Planning System</title>
+    <script>
+      (function () {
+        var key = 'ai-mentor-theme';
+        var theme = 'light';
+        try {
+          var stored = localStorage.getItem(key);
+          if (stored === 'light' || stored === 'dark') theme = stored;
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

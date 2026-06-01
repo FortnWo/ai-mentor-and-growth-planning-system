@@ -195,36 +195,44 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
 
     db = database_module.SessionLocal()
     try:
-        plan = plan_service.prepare_plan_for_goal(
+        plans = plan_service.prepare_plans_for_goal(
             db,
             event.user_id,
             goal_id,
             reset_items=False,
         )
-        if not plan:
-            logger.warning("Failed to prepare action plan for goal_id=%s user_id=%s", goal_id, event.user_id)
+        if not plans:
+            logger.warning("Failed to prepare action plans for goal_id=%s user_id=%s", goal_id, event.user_id)
             return
 
-        try:
-            plan_service.generate_plan_with_retry(db, event.user_id, plan.id)
-        except (RuntimeError, ValueError) as exc:
-            plan_service.mark_plan_failed(db, plan.id, str(exc))
-            logger.warning(
-                "Action plan generation failed plan_id=%s goal_id=%s user_id=%s error=%s",
-                plan.id,
-                goal_id,
-                event.user_id,
-                exc,
+        plan_statuses: list[dict] = []
+        for plan in plans:
+            try:
+                plan_service.generate_plan_with_retry(db, event.user_id, plan.id)
+            except (RuntimeError, ValueError) as exc:
+                plan_service.mark_plan_failed(db, plan.id, str(exc))
+                logger.warning(
+                    "Action plan generation failed plan_id=%s goal_id=%s user_id=%s error=%s",
+                    plan.id,
+                    goal_id,
+                    event.user_id,
+                    exc,
+                )
+
+            refreshed = plan_service.get_plan_for_user(db, event.user_id, plan.id)
+            plan_statuses.append(
+                {
+                    "plan_id": plan.id,
+                    "plan_status": refreshed.status if refreshed else "failed",
+                }
             )
 
-        refreshed = plan_service.get_plan_for_user(db, event.user_id, plan.id)
         _publish_followup_event(
             DomainEventName.ON_ACTION_GENERATED,
             source_event=event,
             payload={
                 "goal_id": goal_id,
-                "plan_id": plan.id,
-                "plan_status": refreshed.status if refreshed else "failed",
+                "plans": plan_statuses,
             },
         )
     finally:

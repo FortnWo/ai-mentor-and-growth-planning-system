@@ -11,6 +11,11 @@ const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use((config) => {
+  const url = config.url ?? ''
+  if (url.includes('/auth/login')) {
+    return config
+  }
+
   const token = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
   if (token) {
     config.headers = config.headers ?? {}
@@ -24,10 +29,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response?.status === 401) {
-      localStorage.removeItem('ai_mentor_access_token')
-      localStorage.removeItem('ai_mentor_user')
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login')
+      const requestUrl = String(error.config?.url ?? '')
+      const isLoginRequest = requestUrl.includes('/auth/login')
+
+      if (!isLoginRequest) {
+        void import('../stores/auth').then(({ clearAuthSession }) => {
+          clearAuthSession()
+        })
       }
     }
     console.error('[API Error]', error.response?.data ?? error.message)

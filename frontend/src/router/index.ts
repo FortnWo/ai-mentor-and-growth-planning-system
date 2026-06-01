@@ -68,7 +68,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   loadStoredAuthState()
 
-  if (authState.token && (to.meta.requiresAuth || !authState.user)) {
+  if (authState.token && (to.meta.requiresAuth || !authState.user || to.meta.guestOnly)) {
     await refreshCurrentUser()
   }
 

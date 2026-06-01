@@ -76,6 +76,10 @@ def get_growth_stats(
     return growth_record_service.stats_for_user(db, user_id, start_date=start_date, end_date=end_date)
 
 
+def daily_trend_for_user(db: Session, user_id: int, start_date: str, end_date: str) -> list[dict]:
+    return growth_record_service.daily_trend_for_user(db, user_id, start_date, end_date)
+
+
 def create_weekly_summary(db: Session, user_id: int, start_date, end_date) -> GrowthSummary:
     return growth_summary_service.create_weekly_summary(db, user_id, start_date, end_date)
 

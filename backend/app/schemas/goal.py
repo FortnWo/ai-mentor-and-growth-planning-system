@@ -27,6 +27,16 @@ class GoalBreakdownTree(BaseModel):
     root_nodes: list[GoalBreakdownNode] = Field(default_factory=list)
 
 
+class MainActionPlanProgress(BaseModel):
+    """每个主拆解节点对应的行动计划进度（用于前端进度条）。"""
+
+    main_breakdown_id: int
+    plan_id: int | None = None
+    plan_status: str | None = None
+    total_items: int = 0
+    completed_items: int = 0
+
+
 class GoalCreate(BaseModel):
     """创建目标的请求体"""
     title: str = Field(..., min_length=1, max_length=255)
@@ -62,6 +72,7 @@ class GoalRead(BaseModel):
 class GoalDetailRead(GoalRead):
     """包含拆解树的目标详情"""
     breakdowns: GoalBreakdownTree
+    main_action_plan_progress: list[MainActionPlanProgress] = Field(default_factory=list)
 
 
 class GoalBreakdownCreate(BaseModel):

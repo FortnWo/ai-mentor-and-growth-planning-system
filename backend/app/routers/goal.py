@@ -159,6 +159,35 @@ def refresh_goal_breakdown(
     return {"message": "Goal breakdown refresh started"}
 
 
+@router.post("/{goal_id}/reschedule", status_code=status.HTTP_202_ACCEPTED)
+def reschedule_goal_plans(
+    goal_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """根据当前日期重新拆解目标并生成各主节点行动计划（适用于失败或逾期后的重新安排）。"""
+    if not settings.GOAL_BREAKDOWN_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Goal breakdown feature is disabled",
+        )
+
+    goal = goal_service.get_goal_for_user(db, current_user.id, goal_id)
+    if not goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+
+    background_tasks.add_task(
+        _process_goal_breakdown_in_background,
+        goal.id,
+        current_user.id,
+        goal.title,
+        goal.description,
+    )
+
+    return {"message": "Goal reschedule (breakdown + plans) started"}
+
+
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_goal(
     goal_id: int,

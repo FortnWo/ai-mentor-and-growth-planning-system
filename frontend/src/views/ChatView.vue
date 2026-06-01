@@ -594,9 +594,9 @@ onMounted(async () => {
   width: 100%;
   padding: 0.95rem 1rem;
   border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid var(--border);
   color: inherit;
-  background: rgba(15, 23, 42, 0.48);
+  background: var(--surface);
 }
 
 .session-card--editing {
@@ -605,12 +605,12 @@ onMounted(async () => {
 }
 
 .session-card.active {
-  border-color: rgba(6, 182, 212, 0.28);
-  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(var(--accent-1-rgb), 0.28);
+  background: rgba(var(--accent-1-rgb), 0.08);
 }
 
 .session-card strong {
-  color: #f8fbff;
+  color: var(--heading);
 }
 
 .session-card small {
@@ -640,7 +640,7 @@ onMounted(async () => {
 }
 
 .session-card__editor-copy strong {
-  color: #f8fbff;
+  color: var(--heading);
 }
 
 .session-card__input {
@@ -672,7 +672,7 @@ onMounted(async () => {
 
 .session-card:hover .session-card__actions :deep(.compact-action-menu__trigger),
 .session-card:focus-within .session-card__actions :deep(.compact-action-menu__trigger) {
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.18);
+  box-shadow: 0 0 0 1px rgba(var(--accent-1-rgb), 0.18);
 }
 
 @media (hover: none) {

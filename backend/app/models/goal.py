@@ -23,6 +23,7 @@ class GoalBreakdownStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+    FAILED = "failed"
 
 
 UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
@@ -61,7 +62,7 @@ class Goal(Base):
 
     user = relationship("User", back_populates="goals")
     breakdowns = relationship("GoalBreakdown", back_populates="goal", cascade="all, delete-orphan")
-    action_plan = relationship("ActionPlan", back_populates="goal", uselist=False, cascade="all, delete-orphan")
+    action_plans = relationship("ActionPlan", back_populates="goal", cascade="all, delete-orphan")
 
 
 class GoalBreakdown(Base):

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models.action_plan import ActionPlan
+from app.models.action_plan import ActionPlan, ActionPlanItem
 import app.services.action_plan_service as action_plan_service
 
 
@@ -16,21 +16,42 @@ def list_plans_for_user(db: Session, user_id: int) -> list[ActionPlan]:
     return action_plan_service.list_action_plans_for_user(db, user_id)
 
 
+def list_plans_for_goal(db: Session, user_id: int, goal_id: int) -> list[ActionPlan]:
+    return action_plan_service.list_action_plans_for_goal(db, user_id, goal_id)
+
+
 def get_plan_detail(db: Session, user_id: int, plan_id: int):
     return action_plan_service.get_plan_detail(db, user_id, plan_id)
 
 
-def prepare_plan_for_goal(
+def prepare_plans_for_goal(
     db: Session,
     user_id: int,
     goal_id: int,
     reset_items: bool = False,
-) -> ActionPlan | None:
-    return action_plan_service.prepare_action_plan_for_goal(
+) -> list[ActionPlan]:
+    return action_plan_service.prepare_action_plans_for_goal(
         db,
         user_id,
         goal_id,
         reset_items=reset_items,
+    )
+
+
+def update_item_completion(
+    db: Session,
+    user_id: int,
+    plan_id: int,
+    item_id: int,
+    *,
+    completed: bool,
+) -> ActionPlanItem | None:
+    return action_plan_service.update_action_plan_item_completion(
+        db,
+        user_id,
+        plan_id,
+        item_id,
+        completed=completed,
     )
 
 

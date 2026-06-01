@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { login } from '../stores/auth'
+import { getApiErrorMessage } from '../utils/apiError'
 
 const router = useRouter()
 const route = useRoute()
@@ -35,8 +36,8 @@ async function submit() {
     })
 
     await router.push(redirectTarget.value)
-  } catch {
-    error.value = '登录失败，请检查用户名和密码。'
+  } catch (caughtError) {
+    error.value = getApiErrorMessage(caughtError, '登录失败，请检查用户名和密码。')
   } finally {
     submitting.value = false
   }

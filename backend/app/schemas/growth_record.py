@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,7 +11,7 @@ class GrowthRecordCreate(BaseModel):
     source_type: str | None = Field(default="manual")
     source_ref_id: int | None = None
     occurred_at: datetime | None = None
-    record_date: str | None = None
+    record_date: date | None = None
     emotion: str | None = None
     score: int | None = None
     idempotency_key: str | None = None
@@ -27,7 +28,7 @@ class GrowthRecordRead(BaseModel):
     source_type: str
     source_ref_id: int | None = None
     occurred_at: datetime | None = None
-    record_date: str | None = None
+    record_date: date | None = None
     emotion: str | None = None
     score: int | None = None
     ai_summary: str | None = None
@@ -41,7 +42,7 @@ class GrowthRecordListItem(BaseModel):
     id: int
     title: str
     summary: str | None = None
-    record_date: str | None = None
+    record_date: date | None = None
     occurred_at: datetime | None = None
     record_type: str
     source_type: str
@@ -56,5 +57,17 @@ class GrowthRecordStats(BaseModel):
     consecutive_days: int = 0
     growth_score: int = 0
     last_activity_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GrowthDailyTrendPoint(BaseModel):
+    """One calendar day of rolled-up growth metrics for charts."""
+
+    record_date: str
+    completed_count: int = 0
+    reflection_count: int = 0
+    milestone_count: int = 0
+    growth_score: int = 0
 
     model_config = ConfigDict(from_attributes=True)

@@ -2,6 +2,7 @@ from enum import Enum
 
 from sqlalchemy import (
     Column,
+    Date,
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
@@ -54,7 +55,7 @@ class GrowthRecord(Base):
     source_ref_id = Column(UnsignedInt, nullable=True, index=True)
 
     occurred_at = Column(DateTime, nullable=True, index=True)
-    record_date = Column(String(10), nullable=True, index=True)
+    record_date = Column(Date, nullable=True, index=True)
 
     emotion = Column(String(64), nullable=True)
     score = Column(Integer, nullable=True)

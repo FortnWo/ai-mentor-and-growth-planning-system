@@ -1,11 +1,37 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from app.models.growth_record import GrowthRecord, GrowthRecordSource, GrowthRecordType
 from app.services import chat_service
 from sqlalchemy.exc import SQLAlchemyError
+
+
+def _as_date(value: date | str | None) -> date:
+    if isinstance(value, date):
+        return value
+    if value is None:
+        raise ValueError("record_date is required")
+    return date.fromisoformat(str(value))
+
+
+def _effective_record_date_expr():
+    """Calendar day used for analytics when record_date is missing."""
+    return func.coalesce(
+        GrowthRecord.record_date,
+        func.date(GrowthRecord.occurred_at),
+        func.date(GrowthRecord.created_at),
+    )
+
+
+def _apply_effective_date_range(q, start_date: str | None, end_date: str | None):
+    effective = _effective_record_date_expr()
+    if start_date:
+        q = q.filter(effective >= _as_date(start_date))
+    if end_date:
+        q = q.filter(effective <= _as_date(end_date))
+    return q
 
 
 def create_growth_record(
@@ -36,6 +62,13 @@ def create_growth_record(
         if existing:
             return existing
 
+    if record_date is not None:
+        resolved_record_date = _as_date(record_date)
+    elif occurred_at is not None:
+        resolved_record_date = occurred_at.date()
+    else:
+        resolved_record_date = date.today()
+
     record = GrowthRecord(
         user_id=user_id,
         title=title,
@@ -45,7 +78,7 @@ def create_growth_record(
         source_type=(source_type or GrowthRecordSource.MANUAL.value),
         source_ref_id=source_ref_id,
         occurred_at=occurred_at,
-        record_date=(record_date or (date.today().isoformat() if occurred_at is None else occurred_at.date().isoformat())),
+        record_date=resolved_record_date,
         emotion=emotion,
         score=score,
         idempotency_key=idempotency_key,
@@ -58,16 +91,10 @@ def create_growth_record(
     try:
         from app.models.growth_aggregate import GrowthDailyAggregate
 
-        agg_date = None
         try:
-            # record.record_date is YYYY-MM-DD string
-            from datetime import datetime
-
-            agg_date = datetime.fromisoformat(record.record_date).date()
+            agg_date = _as_date(record.record_date) if record.record_date else date.today()
         except Exception:
-            from datetime import date as _date
-
-            agg_date = _date.today()
+            agg_date = date.today()
 
         # try to fetch existing aggregate row
         existing = (
@@ -110,6 +137,64 @@ def create_growth_record(
     return record
 
 
+def void_growth_record_by_idempotency_key(
+    db: Session,
+    user_id: int,
+    idempotency_key: str,
+    *,
+    commit: bool = True,
+) -> bool:
+    """Soft-delete a growth record by idempotency key and reverse its daily aggregate deltas."""
+    from datetime import datetime, timezone
+
+    rec = (
+        db.query(GrowthRecord)
+        .filter(
+            GrowthRecord.user_id == user_id,
+            GrowthRecord.idempotency_key == idempotency_key,
+            GrowthRecord.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not rec:
+        return False
+
+    rec.deleted_at = datetime.now(timezone.utc)
+    db.add(rec)
+
+    try:
+        from app.models.growth_aggregate import GrowthDailyAggregate
+
+        try:
+            agg_date = _as_date(rec.record_date) if rec.record_date else date.today()
+        except Exception:
+            agg_date = date.today()
+
+        existing = (
+            db.query(GrowthDailyAggregate)
+            .filter(GrowthDailyAggregate.user_id == user_id, GrowthDailyAggregate.record_date == agg_date)
+            .with_for_update(nowait=False)
+            .first()
+        )
+        if existing:
+            delta_completed = -1 if rec.record_type == GrowthRecordType.ACTION_PLAN.value else 0
+            delta_milestone = -1 if rec.record_type == GrowthRecordType.MILESTONE.value else 0
+            delta_reflection = -1 if rec.record_type == GrowthRecordType.MANUAL.value else 0
+            delta_score = -int(rec.score or 0)
+
+            existing.completed_count = max(0, (existing.completed_count or 0) + delta_completed)
+            existing.milestone_count = max(0, (existing.milestone_count or 0) + delta_milestone)
+            existing.reflection_count = max(0, (existing.reflection_count or 0) + delta_reflection)
+            existing.growth_score = max(0, (existing.growth_score or 0) + delta_score)
+            db.add(existing)
+    except Exception:
+        pass
+
+    if commit:
+        db.commit()
+    return True
+
+
 def list_growth_records(
     db: Session,
     user_id: int,
@@ -123,9 +208,9 @@ def list_growth_records(
 ):
     q = db.query(GrowthRecord).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
     if start_date:
-        q = q.filter(GrowthRecord.record_date >= start_date)
+        q = q.filter(GrowthRecord.record_date >= _as_date(start_date))
     if end_date:
-        q = q.filter(GrowthRecord.record_date <= end_date)
+        q = q.filter(GrowthRecord.record_date <= _as_date(end_date))
     if record_type:
         q = q.filter(GrowthRecord.record_type == record_type)
     if source_type:
@@ -207,6 +292,79 @@ def process_record_summary_background(record_id: int) -> None:
         db.close()
 
 
+def _stats_from_raw_records(
+    db: Session,
+    user_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict:
+    base = db.query(GrowthRecord).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
+    q = _apply_effective_date_range(base, start_date, end_date)
+
+    completed_count = q.filter(GrowthRecord.record_type == GrowthRecordType.ACTION_PLAN.value).count()
+    milestone_count = q.filter(GrowthRecord.record_type == GrowthRecordType.MILESTONE.value).count()
+    reflection_count = q.filter(GrowthRecord.record_type == GrowthRecordType.MANUAL.value).count()
+
+    activity_q = db.query(GrowthRecord).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
+    activity_q = _apply_effective_date_range(activity_q, start_date, end_date)
+    last_activity = activity_q.with_entities(func.max(GrowthRecord.created_at)).scalar()
+    growth_score = (
+        activity_q.with_entities(func.coalesce(func.sum(GrowthRecord.score), 0)).scalar() or 0
+    )
+
+    consecutive_days = 0
+    try:
+        effective = _effective_record_date_expr()
+        dates = [
+            r[0]
+            for r in db.query(effective)
+            .filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
+            .distinct()
+            .order_by(effective.desc())
+            .limit(30)
+            .all()
+        ]
+        from datetime import datetime
+
+        if dates:
+            today = datetime.utcnow().date()
+            streak = 0
+            for d in dates:
+                if not d:
+                    continue
+                try:
+                    od = _as_date(d)
+                except Exception:
+                    continue
+                if od == today - timedelta(days=streak):
+                    streak += 1
+                else:
+                    break
+            consecutive_days = streak
+    except Exception:
+        consecutive_days = 0
+
+    return {
+        "completed_count": int(completed_count or 0),
+        "reflection_count": int(reflection_count or 0),
+        "milestone_count": int(milestone_count or 0),
+        "consecutive_days": int(consecutive_days),
+        "growth_score": int(growth_score),
+        "last_activity_at": last_activity,
+    }
+
+
+def _has_raw_records_in_range(
+    db: Session,
+    user_id: int,
+    start_date: str | None,
+    end_date: str | None,
+) -> bool:
+    q = db.query(GrowthRecord.id).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
+    q = _apply_effective_date_range(q, start_date, end_date)
+    return q.limit(1).first() is not None
+
+
 def stats_for_user(db: Session, user_id: int, start_date: str | None = None, end_date: str | None = None) -> dict:
     # Prefer aggregated daily table when available for performance
     try:
@@ -214,9 +372,9 @@ def stats_for_user(db: Session, user_id: int, start_date: str | None = None, end
 
         agg_q = db.query(GrowthDailyAggregate).filter(GrowthDailyAggregate.user_id == user_id)
         if start_date:
-            agg_q = agg_q.filter(GrowthDailyAggregate.record_date >= start_date)
+            agg_q = agg_q.filter(GrowthDailyAggregate.record_date >= _as_date(start_date))
         if end_date:
-            agg_q = agg_q.filter(GrowthDailyAggregate.record_date <= end_date)
+            agg_q = agg_q.filter(GrowthDailyAggregate.record_date <= _as_date(end_date))
 
         rows = agg_q.all()
         completed_count = sum((r.completed_count or 0) for r in rows)
@@ -224,13 +382,17 @@ def stats_for_user(db: Session, user_id: int, start_date: str | None = None, end
         milestone_count = sum((r.milestone_count or 0) for r in rows)
         growth_score = sum((r.growth_score or 0) for r in rows)
 
+        agg_total = completed_count + reflection_count + milestone_count + growth_score
+        if agg_total == 0 and _has_raw_records_in_range(db, user_id, start_date, end_date):
+            return _stats_from_raw_records(db, user_id, start_date, end_date)
+
         last_activity = db.query(func.max(GrowthRecord.created_at)).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None)).scalar()
 
         # consecutive_days: count consecutive recent dates present in aggregate
         consecutive_days = 0
         try:
             dates = [r.record_date for r in db.query(GrowthDailyAggregate.record_date).filter(GrowthDailyAggregate.user_id == user_id).distinct().order_by(GrowthDailyAggregate.record_date.desc()).limit(30).all()]
-            from datetime import datetime, timedelta
+            from datetime import datetime
 
             if dates:
                 today = datetime.utcnow().date()
@@ -257,46 +419,96 @@ def stats_for_user(db: Session, user_id: int, start_date: str | None = None, end
             "last_activity_at": last_activity,
         }
     except Exception:
-        # fallback to scanning raw records
-        q = db.query(GrowthRecord).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None))
-        if start_date:
-            q = q.filter(GrowthRecord.record_date >= start_date)
-        if end_date:
-            q = q.filter(GrowthRecord.record_date <= end_date)
+        return _stats_from_raw_records(db, user_id, start_date, end_date)
 
-        completed_count = q.filter(GrowthRecord.record_type == GrowthRecordType.ACTION_PLAN.value).count()
-        milestone_count = q.filter(GrowthRecord.record_type == GrowthRecordType.MILESTONE.value).count()
-        reflection_count = q.filter(GrowthRecord.record_type == GrowthRecordType.MANUAL.value).count()
-        last_activity = db.query(func.max(GrowthRecord.created_at)).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None)).scalar()
-        growth_score = db.query(func.coalesce(func.sum(GrowthRecord.score), 0)).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None)).scalar() or 0
 
-        # consecutive_days fallback
-        consecutive_days = 0
-        try:
-            dates = [r[0] for r in db.query(GrowthRecord.record_date).filter(GrowthRecord.user_id == user_id, GrowthRecord.deleted_at.is_(None)).distinct().order_by(GrowthRecord.record_date.desc()).limit(30).all()]
-            from datetime import datetime, timedelta
+def daily_trend_for_user(db: Session, user_id: int, start_date: str, end_date: str) -> list[dict]:
+    """Return one row per calendar day in [start_date, end_date] for charting."""
+    sd = _as_date(start_date)
+    ed = _as_date(end_date)
+    if sd > ed:
+        return []
 
-            if dates:
-                today = datetime.utcnow().date()
-                streak = 0
-                for d in dates:
-                    try:
-                        od = datetime.fromisoformat(d).date()
-                    except Exception:
-                        continue
-                    if od == today - timedelta(days=streak):
-                        streak += 1
-                    else:
-                        break
-                consecutive_days = streak
-        except Exception:
-            consecutive_days = 0
+    from app.models.growth_aggregate import GrowthDailyAggregate
 
-        return {
-            "completed_count": int(completed_count or 0),
-            "reflection_count": int(reflection_count or 0),
-            "milestone_count": int(milestone_count or 0),
-            "consecutive_days": int(consecutive_days),
-            "growth_score": int(growth_score),
-            "last_activity_at": last_activity,
+    by_date: dict[str, dict] = {}
+
+    agg_rows = (
+        db.query(GrowthDailyAggregate)
+        .filter(
+            GrowthDailyAggregate.user_id == user_id,
+            GrowthDailyAggregate.record_date >= sd,
+            GrowthDailyAggregate.record_date <= ed,
+        )
+        .order_by(GrowthDailyAggregate.record_date.asc())
+        .all()
+    )
+    for r in agg_rows:
+        k = r.record_date.isoformat() if hasattr(r.record_date, "isoformat") else str(r.record_date)
+        by_date[k] = {
+            "record_date": k,
+            "completed_count": int(r.completed_count or 0),
+            "reflection_count": int(r.reflection_count or 0),
+            "milestone_count": int(r.milestone_count or 0),
+            "growth_score": int(r.growth_score or 0),
         }
+
+    ap = GrowthRecordType.ACTION_PLAN.value
+    mn = GrowthRecordType.MANUAL.value
+    ms = GrowthRecordType.MILESTONE.value
+    effective = _effective_record_date_expr()
+
+    grouped = (
+        db.query(
+            effective.label("effective_date"),
+            func.sum(case((GrowthRecord.record_type == ap, 1), else_=0)).label("completed_sum"),
+            func.sum(case((GrowthRecord.record_type == mn, 1), else_=0)).label("reflection_sum"),
+            func.sum(case((GrowthRecord.record_type == ms, 1), else_=0)).label("milestone_sum"),
+            func.coalesce(func.sum(GrowthRecord.score), 0).label("score_sum"),
+        )
+        .filter(
+            GrowthRecord.user_id == user_id,
+            GrowthRecord.deleted_at.is_(None),
+            effective >= sd,
+            effective <= ed,
+        )
+        .group_by(effective)
+        .all()
+    )
+    _trend_fields = ("completed_count", "reflection_count", "milestone_count", "growth_score")
+    for row in grouped:
+        raw_key = row[0]
+        if not raw_key:
+            continue
+        k = raw_key if isinstance(raw_key, str) else raw_key.isoformat()
+        raw = {
+            "record_date": k,
+            "completed_count": int(row.completed_sum or 0),
+            "reflection_count": int(row.reflection_sum or 0),
+            "milestone_count": int(row.milestone_sum or 0),
+            "growth_score": int(row.score_sum or 0),
+        }
+        if k not in by_date:
+            by_date[k] = raw
+        else:
+            for field in _trend_fields:
+                by_date[k][field] = max(by_date[k][field], raw[field])
+
+    out: list[dict] = []
+    cur = sd
+    while cur <= ed:
+        k = cur.isoformat()
+        out.append(
+            by_date.get(
+                k,
+                {
+                    "record_date": k,
+                    "completed_count": 0,
+                    "reflection_count": 0,
+                    "milestone_count": 0,
+                    "growth_score": 0,
+                },
+            )
+        )
+        cur += timedelta(days=1)
+    return out

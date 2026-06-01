@@ -269,16 +269,16 @@ onMounted(async () => {
   gap: 1rem;
   margin: 0;
   padding: 0.85rem 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid var(--table-row-border);
 }
 
 .summary-list strong {
-  color: #d8e7f7;
+  color: var(--label-text);
 }
 
 .summary-list span {
   text-align: right;
-  color: #f8fbff;
+  color: var(--heading);
 }
 
 .form-card {
