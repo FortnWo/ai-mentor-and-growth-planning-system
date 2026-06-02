@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
 from app.models.user import AdminPermissionLevel, User, UserRole
-from app.schemas.user import AdminPrivilegeUpdate, PasswordUpdate, ProfileUpdate, UserCreate, UserUpdate
+from app.schemas.user import AdminPrivilegeUpdate, InfoUpdate, PasswordUpdate, UserCreate, UserUpdate
 
 STUDENT_USERNAME_RE = re.compile(r"^\d{10}$")
 
@@ -120,6 +120,9 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
     if "password" in update_data and update_data["password"]:
         db_user.password_hash = hash_password(update_data["password"])
 
+    if "is_active" in update_data and db_user.role == UserRole.ADMIN:
+        raise ValueError("Admin accounts cannot change active status")
+
     for field in ("full_name", "major", "year_of_study", "bio", "is_active"):
         if field in update_data:
             setattr(db_user, field, update_data[field])
@@ -150,12 +153,12 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
     return db_user
 
 
-def update_profile(db: Session, user_id: int, profile_in: ProfileUpdate) -> User | None:
+def update_info(db: Session, user_id: int, info_in: InfoUpdate) -> User | None:
     db_user = get_user(db, user_id)
     if not db_user:
         return None
 
-    update_data = profile_in.model_dump(exclude_unset=True)
+    update_data = info_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(db_user, field, value)
 

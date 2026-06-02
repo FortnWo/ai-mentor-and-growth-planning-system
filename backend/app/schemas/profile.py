@@ -32,7 +32,7 @@ def _normalize_string_list(value: object) -> list[str]:
     return normalized
 
 
-class ExtendedProfileBase(BaseModel):
+class ProfileBase(BaseModel):
     interests: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
@@ -46,7 +46,7 @@ class ExtendedProfileBase(BaseModel):
         return _normalize_string_list(value)
 
 
-class UserExtendedProfileRead(ExtendedProfileBase):
+class UserProfileRead(ProfileBase):
     id: int
     user_id: int
     last_extracted_at: datetime | None = None
@@ -56,7 +56,7 @@ class UserExtendedProfileRead(ExtendedProfileBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserExtendedProfileUpdate(BaseModel):
+class UserProfileUpdate(BaseModel):
     interests: list[str] | None = None
     skills: list[str] | None = None
     goals: list[str] | None = None
@@ -72,10 +72,10 @@ class UserExtendedProfileUpdate(BaseModel):
         return _normalize_string_list(value)
 
 
-class ExtendedProfileExtractionResult(ExtendedProfileBase):
+class ProfileExtractionResult(ProfileBase):
     pass
 
 
-class ExtendedProfileRefreshResponse(BaseModel):
-    profile: UserExtendedProfileRead
-    extracted: ExtendedProfileExtractionResult
+class ProfileRefreshResponse(BaseModel):
+    profile: UserProfileRead
+    extracted: ProfileExtractionResult

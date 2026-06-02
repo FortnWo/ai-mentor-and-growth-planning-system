@@ -11,7 +11,7 @@ from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanItem, ActionPlanStatus
 from app.models.goal import Goal, GoalBreakdown, GoalBreakdownStatus
-from app.models.extended_profile import UserExtendedProfile
+from app.models.profile import UserProfile
 from app.schemas.action_plan import ActionPlanDetailRead
 from app.models.growth_record import GrowthRecordType, GrowthRecordSource
 from app.services.growth_record_service import create_growth_record, void_growth_record_by_idempotency_key
@@ -120,9 +120,9 @@ def _get_goal_for_user(db: Session, user_id: int, goal_id: int) -> Goal | None:
 
 
 def _generate_action_plan_response_for_main(db: Session, goal: Goal, main_node: GoalBreakdown) -> str:
-    from app.services import chat_service, extended_profile_service
+    from app.services import chat_service, profile_service
 
-    profile = extended_profile_service.get_profile_for_user(db, goal.user_id)
+    profile = profile_service.get_profile_for_user(db, goal.user_id)
     secondary = _list_secondary_breakdowns_for_main(db, main_node.id)
     prompt = _build_action_plan_prompt_for_main(goal, main_node, secondary, profile, date.today().isoformat())
     return chat_service.build_action_plan_response(prompt)
@@ -141,7 +141,7 @@ def _build_action_plan_prompt_for_main(
     goal: Goal,
     main_node: GoalBreakdown,
     secondary_nodes: list[GoalBreakdown],
-    profile: UserExtendedProfile | None,
+    profile: UserProfile | None,
     today_iso: str,
 ) -> str:
     lines: list[str] = []

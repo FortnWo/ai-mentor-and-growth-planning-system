@@ -64,7 +64,7 @@ class UserUpdate(BaseModel):
     bio: str | None = None
 
 
-class ProfileUpdate(BaseModel):
+class InfoUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     major: str | None = Field(default=None, max_length=255)
     year_of_study: int | None = Field(default=None, ge=1, le=12)

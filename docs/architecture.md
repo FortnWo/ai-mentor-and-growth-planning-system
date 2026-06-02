@@ -50,7 +50,8 @@ Vue SPA
 
 - `app/routers/health.py`：健康检查接口。
 - `app/routers/auth.py`：登录与当前用户接口。
-- `app/routers/profile.py`：当前用户资料接口。
+- `app/routers/info.py`：当前用户身份信息接口。
+- `app/routers/profile.py`：用户画像接口。
 - `app/routers/user.py`：管理员专属的用户管理与委托接口。
 - `app/routers/chat.py`：聊天发送 / 列表接口（绑定 JWT 用户身份）。
 - `app/routers/ws.py`：用于实时聊天更新的 WebSocket 接口。
@@ -101,9 +102,12 @@ Vue SPA
 ### 登录后接口
 
 - `GET /auth/me`
+- `GET /info/me`
+- `PUT /info/me`
+- `PATCH /info/me/password`
 - `GET /profile/me`
 - `PUT /profile/me`
-- `PATCH /profile/me/password`
+- `POST /profile/me/refresh-from-chat`
 - `POST /chat`
 - `GET /chat/sessions`
 - `GET /chat/{session_id}/messages`
@@ -125,7 +129,7 @@ Vue SPA
 ## 前端路由与守卫
 
 - `/login`：仅游客可访问。
-- `/chat`、`/profile`、`/plan`：需要登录。
+- `/chat`、`/info`、`/profile`、`/plan`：需要登录。
 - `/admin/users`：需要登录且具备管理员角色。
 - 路由守卫会从本地存储恢复认证状态，并在需要时校验 `/auth/me`。
 

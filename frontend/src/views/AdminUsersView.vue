@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
+import AdminPermissionPicker from '../components/AdminPermissionPicker.vue'
 import {
   createUser,
   deleteUser,
@@ -30,14 +31,14 @@ type CreateFormState = {
   bio: string
   is_active: boolean
   admin_permission_level: AdminPermissionLevel
-  admin_permissions: string
+  admin_permissions: string[]
   admin_expires_at: string
 }
 
 type GrantFormState = {
   target_user_id: string
   permission_level: AdminPermissionLevel
-  permissions: string
+  permissions: string[]
   expires_at: string
 }
 
@@ -59,14 +60,14 @@ const createForm = reactive<CreateFormState>({
   bio: '',
   is_active: true,
   admin_permission_level: 'limited',
-  admin_permissions: 'user.read,user.update',
+  admin_permissions: ['user.read', 'user.update'],
   admin_expires_at: '',
 })
 
 const grantForm = reactive<GrantFormState>({
   target_user_id: '',
   permission_level: 'limited',
-  permissions: 'user.read',
+  permissions: ['user.read'],
   expires_at: '',
 })
 
@@ -83,11 +84,8 @@ function clearMessages() {
   error.value = ''
 }
 
-function parsePermissions(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+function canToggleActive(user: UserRead): boolean {
+  return user.role !== 'admin'
 }
 
 function toIsoString(value: string): string | undefined {
@@ -132,7 +130,7 @@ function buildCreatePayload(): UserCreatePayload {
 
   if (createForm.role === 'admin') {
     payload.admin_permission_level = createForm.admin_permission_level
-    payload.admin_permissions = parsePermissions(createForm.admin_permissions)
+    payload.admin_permissions = [...createForm.admin_permissions]
     payload.admin_expires_at = toIsoString(createForm.admin_expires_at)
   }
 
@@ -150,7 +148,7 @@ function resetCreateForm() {
   createForm.bio = ''
   createForm.is_active = true
   createForm.admin_permission_level = 'limited'
-  createForm.admin_permissions = 'user.read,user.update'
+  createForm.admin_permissions = ['user.read', 'user.update']
   createForm.admin_expires_at = ''
 }
 
@@ -188,6 +186,11 @@ async function submitCreateUser() {
 
 async function toggleActive(user: UserRead) {
   clearMessages()
+
+  if (!canToggleActive(user)) {
+    error.value = '管理员账号不可禁用或启用。'
+    return
+  }
 
   try {
     actionLoadingId.value = user.id
@@ -230,7 +233,7 @@ async function applyGrantForm() {
     return
   }
 
-  const permissions = parsePermissions(grantForm.permissions)
+  const permissions = [...grantForm.permissions]
   if (grantForm.permission_level === 'limited' && !permissions.length) {
     error.value = '有限权限至少需要一个权限键。'
     return
@@ -370,6 +373,31 @@ onMounted(async () => {
             </select>
           </label>
 
+          <div class="field">
+            <span class="label">账号状态</span>
+            <div class="status-segmented" role="radiogroup" aria-label="账号状态">
+              <button
+                type="button"
+                class="status-seg-btn"
+                :class="{ 'status-seg-btn--active': createForm.is_active }"
+                :aria-pressed="createForm.is_active"
+                @click="createForm.is_active = true"
+              >
+                启用
+              </button>
+              <button
+                type="button"
+                class="status-seg-btn"
+                :class="{ 'status-seg-btn--active': !createForm.is_active }"
+                :aria-pressed="!createForm.is_active"
+                @click="createForm.is_active = false"
+              >
+                禁用
+              </button>
+            </div>
+            <small class="hint">禁用后该用户无法登录。</small>
+          </div>
+
           <label class="field">
             <span class="label">用户名</span>
             <input v-model="createForm.username" class="input" placeholder="学生：10 位学号" />
@@ -409,11 +437,6 @@ onMounted(async () => {
             <small class="hint">输入 1 到 12 的整数，或留空。</small>
           </label>
 
-          <label class="field field--inline">
-            <input v-model="createForm.is_active" type="checkbox" />
-            <span class="label">启用</span>
-          </label>
-
           <label class="field span-all">
             <span class="label">简介</span>
             <textarea v-model="createForm.bio" class="textarea" rows="3"></textarea>
@@ -428,10 +451,14 @@ onMounted(async () => {
               </select>
             </label>
 
-            <label class="field">
+            <div v-if="createForm.admin_permission_level === 'limited'" class="field">
               <span class="label">管理员权限键</span>
-              <input v-model="createForm.admin_permissions" class="input" placeholder="user.read,user.update" />
-            </label>
+              <AdminPermissionPicker v-model="createForm.admin_permissions" />
+            </div>
+            <div v-else class="field span-all">
+              <span class="label">管理员权限键</span>
+              <small class="hint">完整权限包含全部操作，无需单独勾选。</small>
+            </div>
 
             <label class="field span-all">
               <span class="label">管理员过期时间</span>
@@ -467,10 +494,14 @@ onMounted(async () => {
             </select>
           </label>
 
-          <label class="field">
+          <div v-if="grantForm.permission_level === 'limited'" class="field">
             <span class="label">权限键</span>
-            <input v-model="grantForm.permissions" class="input" placeholder="user.read,user.update" />
-          </label>
+            <AdminPermissionPicker v-model="grantForm.permissions" />
+          </div>
+          <div v-else class="field">
+            <span class="label">权限键</span>
+            <small class="hint">完整权限包含全部操作，无需单独勾选。</small>
+          </div>
 
           <label class="field">
             <span class="label">过期时间</span>
@@ -541,7 +572,8 @@ onMounted(async () => {
                   <div class="actions table-actions">
                     <button
                       class="button button--ghost"
-                      :disabled="actionLoadingId === user.id"
+                      :disabled="actionLoadingId === user.id || !canToggleActive(user)"
+                      :title="!canToggleActive(user) ? '管理员账号不可变更启用状态' : undefined"
                       type="button"
                       @click="toggleActive(user)"
                     >
@@ -628,6 +660,44 @@ onMounted(async () => {
 
 .span-all {
   grid-column: 1 / -1;
+}
+
+.status-segmented {
+  display: flex;
+  width: 100%;
+  padding: 3px;
+  border-radius: var(--radius-md, 14px);
+  background: var(--chip-bg);
+  border: 1px solid var(--table-row-border);
+}
+
+.status-seg-btn {
+  flex: 1;
+  border: none;
+  cursor: pointer;
+  padding: 0.65rem 0.9rem;
+  min-height: 44px;
+  border-radius: var(--radius-sm, 10px);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.status-seg-btn--active {
+  color: var(--heading);
+  background: rgba(var(--accent-1-rgb), 0.12);
+  box-shadow: 0 0 0 1px rgba(var(--accent-1-rgb), 0.22);
+}
+
+.status-seg-btn:not(.status-seg-btn--active):hover {
+  color: var(--heading);
+  background: rgba(var(--accent-1-rgb), 0.06);
 }
 
 @media (max-width: 1100px) {

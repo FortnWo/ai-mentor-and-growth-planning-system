@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     INDEX idx_chat_messages_session (session_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- user_profile (用户画像)
 CREATE TABLE IF NOT EXISTS user_profile (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL UNIQUE,

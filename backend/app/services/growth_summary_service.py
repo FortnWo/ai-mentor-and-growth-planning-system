@@ -39,3 +39,16 @@ def create_weekly_summary(db: Session, user_id: int, start_date: date, end_date:
     db.commit()
     db.refresh(summary)
     return summary
+
+
+def get_latest_weekly_summary(db: Session, user_id: int, start_date: date, end_date: date) -> GrowthSummary | None:
+    return (
+        db.query(GrowthSummary)
+        .filter(
+            GrowthSummary.user_id == user_id,
+            GrowthSummary.start_date == start_date,
+            GrowthSummary.end_date == end_date,
+        )
+        .order_by(GrowthSummary.created_at.desc(), GrowthSummary.id.desc())
+        .first()
+    )

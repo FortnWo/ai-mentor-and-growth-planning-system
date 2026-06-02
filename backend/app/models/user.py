@@ -62,8 +62,8 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    extended_profile = relationship(
-        "UserExtendedProfile",
+    profile = relationship(
+        "UserProfile",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import CompactActionMenu from '../components/CompactActionMenu'
 import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
@@ -17,6 +17,8 @@ const renamingSessionId = ref<number | null>(null)
 const renameDraftTitle = ref<string>('')
 const deletingSessionId = ref<number | null>(null)
 const error = ref<string>('')
+const messagesContainer = ref<HTMLElement | null>(null)
+const sessionsPanelOpen = ref<boolean>(false)
 
 let ws: WebSocket | null = null
 
@@ -205,6 +207,12 @@ async function loadMessages(sessionId: number, options: LoadMessagesOptions = {}
 function startNewSession() {
   selectedSessionId.value = null
   messages.value = []
+  newSessionTitle.value = ''
+}
+
+function scrollMessagesToBottom() {
+  if (!messagesContainer.value) return
+  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
 }
 
 function getSessionBusyState(sessionId: number) {
@@ -336,6 +344,8 @@ async function submitMessage() {
     await refreshSessions({ loadActiveMessages: false })
     // initial post-send fetch is best-effort and should not flash an error banner
     await loadMessages(response.session.id, { silent: true })
+    await nextTick()
+    scrollMessagesToBottom()
 
     // ensure websocket connected to receive assistant reply in real time
     ensureWs()
@@ -412,6 +422,14 @@ onMounted(async () => {
   // ensure websocket connects after we refresh user/session info
   ensureWs()
 })
+
+watch(
+  () => messages.value.length,
+  async () => {
+    await nextTick()
+    scrollMessagesToBottom()
+  },
+)
 </script>
 
 <template>
@@ -461,8 +479,8 @@ onMounted(async () => {
 
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
-    <section class="grid-2 chat-layout">
-      <aside class="panel sessions-panel reveal reveal--delay-1">
+    <section :class="['grid-2 chat-layout', { 'chat-layout--sessions-hidden': !sessionsPanelOpen }]">
+      <aside :class="['panel sessions-panel reveal reveal--delay-1', { 'sessions-panel--hidden': !sessionsPanelOpen }]">
         <div class="title-row">
           <div>
             <p class="eyebrow">会话</p>
@@ -473,8 +491,8 @@ onMounted(async () => {
         </div>
 
         <div class="field">
-          <label class="label" for="session-title">新会话标题（可选）</label>
-          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="例如：期中复盘计划" />
+          <label class="label" for="session-title">自定义会话标题（可选）</label>
+          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="留空则自动根据首条消息生成标题" />
         </div>
 
         <div class="button-row">
@@ -514,7 +532,7 @@ onMounted(async () => {
 
             <template v-else>
               <button class="session-card__main" type="button" @click="loadMessages(session.id)">
-                <strong>{{ session.title || `会话 #${session.id}` }}</strong>
+                <strong class="session-card__title">{{ session.title || `会话 #${session.id}` }}</strong>
                 <small>{{ new Date(session.created_at).toLocaleString() }}</small>
               </button>
 
@@ -531,9 +549,15 @@ onMounted(async () => {
 
       <section class="panel chat-panel reveal reveal--delay-2">
         <div class="title-row">
-          <div>
+          <div class="chat-panel__heading">
+            <button class="button button--ghost sessions-toggle" type="button" @click="sessionsPanelOpen = !sessionsPanelOpen">
+              {{ sessionsPanelOpen ? '隐藏会话' : '显示会话' }}
+            </button>
+
+            <div>
             <p class="eyebrow">聊天画布</p>
             <h2 class="section-title">{{ activeSession?.title || '未命名会话' }}</h2>
+            </div>
           </div>
 
           <span class="chip chip--active">{{ messageCount }} messages</span>
@@ -541,7 +565,7 @@ onMounted(async () => {
 
         <div class="divider"></div>
 
-        <div class="messages">
+        <div ref="messagesContainer" class="messages">
           <div v-for="message in messages" :key="message.id" :class="[
             'message-bubble',
             message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
@@ -566,19 +590,56 @@ onMounted(async () => {
 
 <style scoped>
 .chat-layout {
-  align-items: start;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(520px, 1.3fr);
+  align-items: stretch;
+  min-height: min(68vh, 760px);
+
+}
+
+.chat-layout--sessions-hidden {
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .sessions-panel,
 .chat-panel {
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 1rem;
+  min-height: 0;
+  max-height: min(68vh, 760px);
+}
+
+.sessions-panel {
+  transition:
+    none;
+}
+
+.sessions-panel--hidden {
+  opacity: 0;
+
+  pointer-events: none;
+  max-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border-color: transparent;
 }
 
 .session-list,
 .messages {
   display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.session-list {
+  gap: 0.42rem;
+  align-content: start;
+}
+
+.messages {
   gap: 0.75rem;
+  align-content: start;
 }
 
 .message-bubble small {
@@ -586,17 +647,23 @@ onMounted(async () => {
   font-size: 0.78rem;
 }
 
+.message-bubble p {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .session-card {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.38rem;
   align-items: center;
   width: 100%;
-  padding: 0.95rem 1rem;
-  border-radius: 18px;
-  border: 1px solid var(--border);
+  padding: 0;
+  border-radius: 14px;
+  border: 0;
   color: inherit;
-  background: var(--surface);
+  background: transparent;
 }
 
 .session-card--editing {
@@ -605,33 +672,60 @@ onMounted(async () => {
 }
 
 .session-card.active {
-  border-color: rgba(var(--accent-1-rgb), 0.28);
-  background: rgba(var(--accent-1-rgb), 0.08);
+  background: transparent;
 }
 
 .session-card strong {
   color: var(--heading);
 }
 
+.session-card__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
 .session-card small {
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text-muted) 82%, transparent);
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .session-card__main {
   display: grid;
-  gap: 0.3rem;
+  gap: 0.18rem;
   width: 100%;
-  padding: 0;
-  border: 0;
+  padding: 0.6rem 0.76rem;
+  border: 1px solid rgba(var(--accent-1-rgb), 0.12);
+  border-radius: 13px;
   text-align: left;
   color: inherit;
-  background: transparent;
+  background: rgba(var(--accent-1-rgb), 0.02);
+  transition:
+    none;
+}
+
+.session-card:hover .session-card__main,
+.session-card:focus-within .session-card__main {
+  border-color: rgba(var(--accent-1-rgb), 0.18);
+  background: rgba(var(--accent-1-rgb), 0.05);
+}
+
+.session-card.active .session-card__main {
+  border-color: rgba(var(--accent-1-rgb), 0.22);
+  background: rgba(var(--accent-1-rgb), 0.07);
 }
 
 .session-card__editor {
   display: grid;
   gap: 0.75rem;
   width: 100%;
+  padding: 0.68rem 0.76rem;
+  border: 1px solid rgba(var(--accent-1-rgb), 0.22);
+  border-radius: 13px;
+  background: rgba(var(--accent-1-rgb), 0.05);
 }
 
 .session-card__editor-copy {
@@ -655,13 +749,12 @@ onMounted(async () => {
 
 .session-card__actions {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-end;
   opacity: 0;
   transform: translateX(4px);
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+    none;
 }
 
 .session-card:hover .session-card__actions,
@@ -683,7 +776,20 @@ onMounted(async () => {
 }
 
 .chat-panel {
-  min-height: 640px;
+  min-height: 0;
+  position: relative;
+}
+
+.chat-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.sessions-toggle {
+  flex-shrink: 0;
+  min-width: 6.2rem;
+  padding-inline: 0.7rem;
 }
 
 .message-form {
@@ -702,6 +808,28 @@ onMounted(async () => {
 }
 
 @media (max-width: 1024px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+    min-height: unset;
+    transition: none;
+  }
+
+  .sessions-panel,
+  .chat-panel {
+    max-height: none;
+  }
+
+  .session-list,
+  .messages {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .sessions-panel--hidden {
+    max-height: 0;
+    margin: 0;
+  }
+
   .message-form {
     grid-template-columns: 1fr;
   }

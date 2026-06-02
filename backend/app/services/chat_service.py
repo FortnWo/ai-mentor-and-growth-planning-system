@@ -6,7 +6,7 @@ from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.schemas.chat import ChatMessageRead, ChatSendRequest, MessageDeliveryStatus
-from app.services import ai_service, extended_profile_service
+from app.services import ai_service, profile_service
 
 import asyncio
 import threading
@@ -138,12 +138,20 @@ def suggest_session_title(message: str) -> str:
     text = " ".join(message.strip().split())
     if not text:
         return "New chat"
+    splitters = ("。", "！", "？", ".", "!", "?", "\n")
+    first_sentence = text
+    for splitter in splitters:
+        if splitter in first_sentence:
+            first_sentence = first_sentence.split(splitter, 1)[0].strip()
+            break
 
-    words = text.split(" ")
-    if len(words) <= 6:
-        return text
+    if not first_sentence:
+        first_sentence = text
 
-    return f"{' '.join(words[:6])}..."
+    if len(first_sentence) <= 24:
+        return first_sentence
+
+    return f"{first_sentence[:24].rstrip()}..."
 
 
 def build_ai_response(message: str, *, instructions: str | None = None) -> str:
@@ -354,18 +362,18 @@ def _refresh_profile_from_session_history(db: Session, *, session_id: int, user_
             return
         profile_user_id = session_obj.user_id
 
-    messages = extended_profile_service.list_recent_messages_for_session(
+    messages = profile_service.list_recent_messages_for_session(
         db,
         session_id=session_id,
         limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
     )
-    extraction_input = extended_profile_service.build_extraction_input(messages)
+    extraction_input = profile_service.build_extraction_input(messages)
     if not extraction_input:
         return
 
     raw_result = build_profile_extraction_response(extraction_input)
-    extraction_result = extended_profile_service.parse_extraction_result(raw_result)
-    extended_profile_service.apply_extraction_result_for_user(
+    extraction_result = profile_service.parse_extraction_result(raw_result)
+    profile_service.apply_extraction_result_for_user(
         db,
         user_id=profile_user_id,
         result=extraction_result,

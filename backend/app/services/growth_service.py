@@ -84,6 +84,10 @@ def create_weekly_summary(db: Session, user_id: int, start_date, end_date) -> Gr
     return growth_summary_service.create_weekly_summary(db, user_id, start_date, end_date)
 
 
+def get_latest_weekly_summary(db: Session, user_id: int, start_date, end_date) -> GrowthSummary | None:
+    return growth_summary_service.get_latest_weekly_summary(db, user_id, start_date, end_date)
+
+
 def process_record_summary_background(record_id: int) -> None:
     growth_record_service.process_record_summary_background(record_id)
 

@@ -39,5 +39,17 @@ export interface GrowthDailyTrendPoint {
 export const getGrowthDailyTrend = (params: { start_date: string; end_date: string }) =>
     apiClient.get<GrowthDailyTrendPoint[]>('/growth-records/trend/daily', { params }).then((r) => r.data)
 
+export interface GrowthSummary {
+    id: number
+    user_id: number
+    start_date: string
+    end_date: string
+    summary: string | null
+    created_at: string | null
+}
+
 export const generateWeeklySummary = (payload: { start_date: string; end_date: string }) =>
     apiClient.post('/growth-records/summary/generate', payload).then((r) => r.data)
+
+export const getWeeklySummary = (params: { start_date: string; end_date: string }) =>
+    apiClient.get<GrowthSummary | null>('/growth-records/summary/latest', { params }).then((r) => r.data)

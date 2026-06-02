@@ -20,7 +20,8 @@
 - 委托管理员权限支持：
   - 完整管理员权限，或
   - 有限权限键与可选过期时间。
-- 当前用户资料自助 API（`/profile/me`）。
+- 当前用户身份信息自助 API（`/info/me`）。
+- 用户画像 API（`/profile/me`）。
 - AI 聊天会话与消息历史。
 - 非阻塞聊天流程：用户消息立即落库，助手回复在后台生成。
 - 通过 WebSocket（`/ws`）推送助手实时更新，并提供轮询兜底。
@@ -120,9 +121,9 @@ npm run build
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/auth/me` | 获取当前用户 |
-| GET | `/profile/me` | 获取我的资料 |
-| PUT | `/profile/me` | 更新我的资料 |
-| PATCH | `/profile/me/password` | 修改我的密码 |
+| GET | `/info/me` | 获取我的身份信息 |
+| PUT | `/info/me` | 更新我的身份信息 |
+| PATCH | `/info/me/password` | 修改我的密码 |
 | POST | `/chat` | 发送消息；立即返回会话和用户消息，助手回复异步生成 |
 | GET | `/chat/sessions` | 列出当前登录用户的聊天会话 |
 | GET | `/chat/{session_id}/messages` | 列出该会话的消息 |
@@ -142,9 +143,9 @@ npm run build
 | GET | `/action-plans/{plan_id}` | 获取行动计划详情 |
 | POST | `/action-plans/{plan_id}/refresh` | 异步刷新行动计划 |
 | DELETE | `/action-plans/{plan_id}` | 删除行动计划 |
-| GET | `/profile/extended/me` | 获取用户画像（缺失时自动创建） |
-| PUT | `/profile/extended/me` | 更新用户画像 |
-| POST | `/profile/extended/me/refresh-from-chat` | 根据聊天历史重建用户画像 |
+| GET | `/profile/me` | 获取用户画像（缺失时自动创建） |
+| PUT | `/profile/me` | 更新用户画像 |
+| POST | `/profile/me/refresh-from-chat` | 根据聊天历史重建用户画像 |
 
 ### WebSocket
 

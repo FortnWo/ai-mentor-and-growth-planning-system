@@ -1,0 +1,42 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.security import get_current_user
+from app.schemas.user import InfoUpdate, PasswordUpdate, UserRead
+from app.services import info_service
+
+router = APIRouter(prefix="/info", tags=["info"])
+
+
+@router.get("/me", response_model=UserRead)
+def get_my_info(current_user=Depends(get_current_user)):
+    return info_service.get_my_info(current_user)
+
+
+@router.put("/me", response_model=UserRead)
+def update_my_info(
+    info_in: InfoUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = info_service.update_my_info(db, current_user.id, info_in)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@router.patch("/me/password", response_model=UserRead)
+def change_my_password(
+    password_in: PasswordUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        user = info_service.change_my_password(db, current_user.id, password_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user

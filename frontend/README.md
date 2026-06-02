@@ -34,7 +34,8 @@ npm run build
 
 - `/login`: login form.
 - `/chat`: AI chat sessions and messages.
-- `/profile`: current-user profile and password updates.
+- `/info`: current-user identity info and password updates.
+- `/profile`: structured user portrait (interests, skills, goals, etc.).
 - `/plan`: growth planning placeholder page.
 - `/admin/users`: admin-only user management and privilege delegation.
 
@@ -51,7 +52,8 @@ npm run build
 
 - `src/api/client.ts`: configured Axios instance + auth header injection.
 - `src/api/auth.ts`: login and current-user endpoints.
-- `src/api/profile.ts`: profile and password endpoints.
+- `src/api/info.ts`: identity info and password endpoints.
+- `src/api/profile.ts`: user portrait endpoints.
 - `src/api/user.ts`: admin user endpoints.
 - `src/api/chat.ts`: chat sessions and messages.
 

@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------
--- user_profile (single user model record)
+-- user_profile (用户画像：兴趣、技能、目标等)
 -- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_profile (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

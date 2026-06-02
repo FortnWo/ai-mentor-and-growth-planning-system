@@ -140,3 +140,41 @@ def test_admin_can_update_and_delete_user(client):
 
     fetch_response = client.get(f"/admin/users/{user_id}", headers=admin_headers(client))
     assert fetch_response.status_code == 404
+
+
+def test_cannot_change_admin_active_status(client):
+    headers = admin_headers(client)
+
+    list_response = client.get("/admin/users", headers=headers)
+    assert list_response.status_code == 200
+
+    admin_user = next(
+        (user for user in list_response.json() if user["username"] == ADMIN_USERNAME),
+        None,
+    )
+    assert admin_user is not None
+    admin_id = admin_user["id"]
+
+    deactivate_admin = client.put(
+        f"/admin/users/{admin_id}",
+        json={"is_active": False},
+        headers=headers,
+    )
+    assert deactivate_admin.status_code == 409
+    assert "active status" in deactivate_admin.json()["detail"].lower()
+
+    create_response = client.post(
+        "/admin/users",
+        json=make_student_payload(5),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    student_id = create_response.json()["id"]
+
+    deactivate_student = client.put(
+        f"/admin/users/{student_id}",
+        json={"is_active": False},
+        headers=headers,
+    )
+    assert deactivate_student.status_code == 200
+    assert deactivate_student.json()["is_active"] is False

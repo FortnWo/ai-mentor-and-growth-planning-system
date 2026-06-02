@@ -3,10 +3,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
     createGrowthRecord,
     generateWeeklySummary,
+    getWeeklySummary,
     getGrowthDailyTrend,
     getGrowthStats,
     listGrowthRecords,
     type GrowthDailyTrendPoint,
+    type GrowthSummary,
 } from '../api/growthRecords'
 import AppEChart from '../components/charts/AppEChart.vue'
 import ChartCard from '../components/charts/ChartCard.vue'
@@ -24,8 +26,11 @@ const listError = ref('')
 const formError = ref('')
 const summaryError = ref('')
 const statsError = ref('')
+const weeklySummaryError = ref('')
 
 const form = reactive({ title: '', summary: '' })
+const weeklySummary = ref<GrowthSummary | null>(null)
+const weeklySummaryLoading = ref(false)
 
 const trendGranularity = ref<'week' | 'month'>('week')
 const trendPoints = ref<GrowthDailyTrendPoint[]>([])
@@ -58,8 +63,22 @@ function clearSummaryError() {
     summaryError.value = ''
 }
 
+function clearWeeklySummaryError() {
+    weeklySummaryError.value = ''
+}
+
 function clearStatsError() {
     statsError.value = ''
+}
+
+function weeklyRange() {
+    const end = new Date()
+    const start = new Date(end)
+    start.setDate(end.getDate() - 6)
+    return {
+        start_date: formatLocalDate(start),
+        end_date: formatLocalDate(end),
+    }
 }
 
 function rangeForTrend() {
@@ -188,16 +207,42 @@ async function triggerWeeklySummary() {
     clearSummaryError()
     summaryFeedback.value = ''
     try {
-        const end = new Date()
-        const start = new Date()
-        start.setDate(end.getDate() - 6)
-        await generateWeeklySummary({
-            start_date: formatLocalDate(start),
-            end_date: formatLocalDate(end),
-        })
+        const range = weeklyRange()
+        await generateWeeklySummary(range)
         summaryFeedback.value = '已触发周总结生成（后台），稍后可在「周总结」查看或刷新。'
+        await pollWeeklySummary(range, 5, 2000)
     } catch (err) {
         summaryError.value = getApiErrorMessage(err, '触发周总结失败。')
+    }
+}
+
+async function loadWeeklySummary(range = weeklyRange()) {
+    weeklySummaryLoading.value = true
+    weeklySummaryError.value = ''
+    try {
+        weeklySummary.value = await getWeeklySummary(range)
+    } catch (err) {
+        weeklySummary.value = null
+        weeklySummaryError.value = getApiErrorMessage(err, '周总结加载失败。')
+    } finally {
+        weeklySummaryLoading.value = false
+    }
+}
+
+async function pollWeeklySummary(range = weeklyRange(), maxAttempts = 5, delayMs = 2000) {
+    await loadWeeklySummary(range)
+    if (weeklySummary.value?.summary) {
+        summaryFeedback.value = '本周总结已更新。'
+        return
+    }
+
+    for (let attempt = 1; attempt < maxAttempts; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+        await loadWeeklySummary(range)
+        if (weeklySummary.value?.summary) {
+            summaryFeedback.value = '本周总结已更新。'
+            return
+        }
     }
 }
 
@@ -215,6 +260,7 @@ onMounted(async () => {
     await load()
     await loadTrend()
     await loadRangeStats()
+    await loadWeeklySummary()
 })
 </script>
 
@@ -314,6 +360,22 @@ onMounted(async () => {
 
         <div class="grid-2 growth-grid">
             <section class="panel form-card">
+                <section class="weekly-summary-card">
+                    <div class="weekly-summary-card__header">
+                        <h3 class="section-title">本周总结</h3>
+                        <p class="muted weekly-summary-card__range">
+                            {{ weeklySummary?.start_date ?? weeklyRange().start_date }} ～ {{ weeklySummary?.end_date ?? weeklyRange().end_date }}
+                        </p>
+                    </div>
+                    <p v-if="weeklySummaryLoading" class="muted">周总结加载中…</p>
+                    <div v-else-if="weeklySummaryError" class="summary-error-row" role="alert">
+                        <span class="feedback feedback--error summary-error-row__text">{{ weeklySummaryError }}</span>
+                        <button type="button" class="button button--ghost summary-error-row__dismiss" @click="clearWeeklySummaryError">关闭</button>
+                    </div>
+                    <p v-else-if="weeklySummary?.summary" class="weekly-summary-card__content">{{ weeklySummary.summary }}</p>
+                    <p v-else class="muted">本周总结生成后会显示在这里。</p>
+                </section>
+
                 <h2 class="section-title">记录一个小胜利</h2>
                 <label class="field">
                     <span class="label">标题</span>
@@ -458,6 +520,32 @@ onMounted(async () => {
     flex-shrink: 0;
     font-size: 0.82rem;
     padding: 0.35rem 0.75rem;
+}
+
+.weekly-summary-card {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    border-radius: var(--radius-md, 14px);
+    border: 1px solid var(--table-row-border);
+    background: var(--surface);
+}
+
+.weekly-summary-card__header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.weekly-summary-card__range {
+    margin: 0;
+}
+
+.weekly-summary-card__content {
+    margin: 0.5rem 0 0;
+    line-height: 1.6;
+    color: var(--text);
 }
 
 .timeline-panel {

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -113,6 +115,19 @@ def generate_weekly_summary(payload: GrowthSummaryCreate, background_tasks: Back
 
     # Return accepted with a lightweight placeholder object
     return GrowthSummaryRead(id=0, user_id=current_user.id, start_date=payload.start_date, end_date=payload.end_date, summary=None, created_at=None)
+
+
+@router.get("/summary/latest", response_model=GrowthSummaryRead | None)
+def get_latest_weekly_summary(
+    start_date: date,
+    end_date: date,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    summary = growth_service.get_latest_weekly_summary(db, current_user.id, start_date=start_date, end_date=end_date)
+    if not summary:
+        return None
+    return GrowthSummaryRead.model_validate(summary)
 
 
 @router.get("/{record_id}", response_model=GrowthRecordRead)

@@ -25,11 +25,11 @@ const workspaceTitle = computed(() => {
     return '成长记录工作台'
   }
 
-  if (route.path === '/profile/extended') {
+  if (route.path === '/profile') {
     return '用户画像实验室'
   }
 
-  if (route.path === '/profile') {
+  if (route.path === '/info') {
     return '身份信息工作台'
   }
 
@@ -52,11 +52,11 @@ const workspaceSubtitle = computed(() => {
     return '记录每一个小进步，回看成长轨迹，让成长痕迹始终可见。'
   }
 
-  if (route.path === '/profile/extended') {
+  if (route.path === '/profile') {
     return '通过手动编辑与聊天抽取，持续整理兴趣、技能、习惯和目标。'
   }
 
-  if (route.path === '/profile') {
+  if (route.path === '/info') {
     return '查看你的身份概览，让资料保持干净、聚焦、及时更新。'
   }
 
@@ -77,11 +77,11 @@ const navigationItems = computed(() => {
 
   return [
     { to: '/chat', label: '聊天' },
-    { to: '/profile/extended', label: '用户画像' },
+    { to: '/profile', label: '用户画像' },
     { to: '/plan', label: '目标计划' },
     { to: '/growth', label: '成长记录' },
     ...(admin.value ? [{ to: '/admin/users', label: '用户管理' }] : []),
-    { to: '/profile', label: '我的资料' },
+    { to: '/info', label: '我的资料' },
   ]
 })
 

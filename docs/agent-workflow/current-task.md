@@ -25,7 +25,7 @@
 ## 4. Files and Module Scope
 
 - Target Files: `backend/app/models/growth_record.py`, `backend/app/schemas/growth_record.py`, `backend/app/services/growth_record_service.py`, `backend/app/routers/growth_record.py`, `backend/app/services/action_plan_service.py`, `backend/app/main.py`, `backend/tests/test_growth_record.py`, `frontend/src/api/growthRecords.ts`, `frontend/src/views/GrowthRecordsView.vue`, `frontend/src/router/index.ts`.
-- 相关模块：`action_plan`、`extended_profile`、`chat`、`profile`。
+- 相关模块：`action_plan`、`profile`、`info`、`chat`。
 - 可复用代码：现有行动计划 service 模式、Pydantic 读模型、router 认证模式、资料页 / 计划页的温暖面板样式。
 
 ## 5. Interface and Data Contract

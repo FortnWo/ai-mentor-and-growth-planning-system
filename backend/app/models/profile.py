@@ -10,7 +10,7 @@ from app.core.database import Base
 UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
 
 
-class UserExtendedProfile(Base):
+class UserProfile(Base):
     __tablename__ = "user_profile"
 
     id = Column(UnsignedInt, primary_key=True, index=True)
@@ -33,7 +33,7 @@ class UserExtendedProfile(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    user = relationship("User", back_populates="extended_profile")
+    user = relationship("User", back_populates="profile")
 
     @staticmethod
     def _load_json_list(raw_value: str | None) -> list[str]:

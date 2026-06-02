@@ -1,3 +1,7 @@
+import json
+
+from app.services import chat_service
+
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "Admin@12345"
 
@@ -19,7 +23,7 @@ def create_student_user(client, index: int = 1):
     response = client.post(
         "/admin/users",
         json={
-            "username": f"20220254{index:02d}",
+            "username": f"20220255{index:02d}",
             "email": f"profile_{index}@example.com",
             "password": "Student@12345",
             "full_name": f"Profile Student {index}",
@@ -34,55 +38,123 @@ def create_student_user(client, index: int = 1):
     return response.json()
 
 
-def login_student(client, username: str, password: str):
+def login_student(client, username: str):
     response = client.post(
         "/auth/login",
-        json={"username": username, "password": password},
+        json={"username": username, "password": "Student@12345"},
     )
     assert response.status_code == 200
     return response.json()["access_token"]
 
 
-def test_profile_me_requires_auth(client):
+def test_get_profile_requires_auth(client):
     response = client.get("/profile/me")
     assert response.status_code == 401
 
 
-def test_profile_me_read_update_and_password_change(client):
+def test_get_profile_returns_default_empty_structure(client):
     student = create_student_user(client, 1)
-    token = login_student(client, student["username"], "Student@12345")
+    token = login_student(client, student["username"])
     headers = {"Authorization": f"Bearer {token}"}
 
-    profile_response = client.get("/profile/me", headers=headers)
-    assert profile_response.status_code == 200
-    assert profile_response.json()["username"] == student["username"]
+    response = client.get("/profile/me", headers=headers)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["user_id"] == student["id"]
+    assert data["interests"] == []
+    assert data["skills"] == []
+    assert data["goals"] == []
+    assert data["study_habits"] == []
+    assert data["personality"] == []
+    assert data["preferences"] == []
+    assert data["last_extracted_at"] is None
+
+
+def test_update_profile_persists_values(client):
+    student = create_student_user(client, 2)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
 
     update_response = client.put(
         "/profile/me",
         json={
-            "full_name": "Updated Profile Student",
-            "major": "AI Engineering",
-            "year_of_study": 2,
-            "bio": "Updated bio",
+            "interests": ["AI", "ML"],
+            "skills": ["Python", "FastAPI"],
+            "goals": ["Build portfolio"],
+            "study_habits": ["Review nightly"],
+            "personality": ["Curious", "Persistent"],
+            "preferences": ["Hands-on projects"],
         },
         headers=headers,
     )
     assert update_response.status_code == 200
-    assert update_response.json()["full_name"] == "Updated Profile Student"
-    assert update_response.json()["major"] == "AI Engineering"
 
-    password_response = client.patch(
-        "/profile/me/password",
-        json={
-            "current_password": "Student@12345",
-            "new_password": "Student@54321",
-        },
+    read_response = client.get("/profile/me", headers=headers)
+    assert read_response.status_code == 200
+    data = read_response.json()
+
+    assert data["interests"] == ["AI", "ML"]
+    assert data["skills"] == ["Python", "FastAPI"]
+    assert data["goals"] == ["Build portfolio"]
+    assert data["study_habits"] == ["Review nightly"]
+    assert data["personality"] == ["Curious", "Persistent"]
+    assert data["preferences"] == ["Hands-on projects"]
+
+
+def test_refresh_profile_from_chat_updates_profile(client, monkeypatch):
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Thanks for sharing your context.")
+    monkeypatch.setattr(
+        chat_service,
+        "build_profile_extraction_response",
+        lambda message: json.dumps(
+            {
+                "interests": ["machine learning"],
+                "skills": ["python"],
+                "goals": ["improve consistency"],
+                "study_habits": ["study every night"],
+                "personality": ["self-driven"],
+                "preferences": ["short feedback loops"],
+            }
+        ),
+    )
+
+    student = create_student_user(client, 3)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_response = client.post(
+        "/chat",
+        json={"message": "I enjoy machine learning and want to study every night."},
         headers=headers,
     )
-    assert password_response.status_code == 200
+    assert chat_response.status_code == 200
 
-    relogin_response = client.post(
-        "/auth/login",
-        json={"username": student["username"], "password": "Student@54321"},
+    refresh_response = client.post("/profile/me/refresh-from-chat", headers=headers)
+    assert refresh_response.status_code == 200
+
+    payload = refresh_response.json()
+    assert payload["profile"]["interests"] == ["machine learning"]
+    assert payload["profile"]["skills"] == ["python"]
+    assert payload["profile"]["goals"] == ["improve consistency"]
+    assert payload["extracted"]["study_habits"] == ["study every night"]
+
+
+def test_refresh_profile_invalid_llm_output_returns_conflict(client, monkeypatch):
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Assistant response")
+    monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: "not-valid-json")
+
+    student = create_student_user(client, 4)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_response = client.post(
+        "/chat",
+        json={"message": "I like learning by doing."},
+        headers=headers,
     )
-    assert relogin_response.status_code == 200
+    assert chat_response.status_code == 200
+
+    refresh_response = client.post("/profile/me/refresh-from-chat", headers=headers)
+    assert refresh_response.status_code == 409
+    assert "valid JSON" in refresh_response.json()["detail"]

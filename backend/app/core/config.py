@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     PROFILE_EXTRACTION_ENABLED: bool = True
     PROFILE_EXTRACTION_MESSAGE_WINDOW: int = 14
     PROFILE_EXTRACTION_SYSTEM_PROMPT: str = (
-        "You are a profile extraction assistant. "
+        "You are a profile extraction mentor. "
         "Extract user profile signals from the dialogue and return strict JSON only. "
         "Use keys: interests, skills, goals, study_habits, personality, preferences. "
         "Each key must map to an array of short strings. "

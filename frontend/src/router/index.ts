@@ -29,15 +29,15 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
-    path: '/profile',
-    name: 'Profile',
-    component: () => import('../views/ProfileView.vue'),
+    path: '/info',
+    name: 'Info',
+    component: () => import('../views/InfoView.vue'),
     meta: { requiresAuth: true },
   },
   {
-    path: '/profile/extended',
-    name: 'ExtendedProfile',
-    component: () => import('../views/ExtendedProfileView.vue'),
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('../views/ProfileView.vue'),
     meta: { requiresAuth: true },
   },
   {

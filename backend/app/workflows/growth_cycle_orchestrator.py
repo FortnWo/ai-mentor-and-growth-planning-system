@@ -18,7 +18,7 @@ logger = logging.getLogger("ai_mentor.orchestrator")
 _INITIALIZED = False
 
 
-def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, user_extended_profile=None) -> str:
+def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, user_profile=None) -> str:
     lines: list[str] = []
 
     lines.append("Goal to break down:")
@@ -26,14 +26,14 @@ def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, 
     if goal_description:
         lines.append(f"Description: {goal_description}")
 
-    if user_extended_profile:
+    if user_profile:
         lines.append("\nUser profile context:")
-        if user_extended_profile.goals:
-            lines.append(f"User's goals: {', '.join(user_extended_profile.goals)}")
-        if user_extended_profile.skills:
-            lines.append(f"User's skills: {', '.join(user_extended_profile.skills)}")
-        if user_extended_profile.interests:
-            lines.append(f"User's interests: {', '.join(user_extended_profile.interests)}")
+        if user_profile.goals:
+            lines.append(f"User's goals: {', '.join(user_profile.goals)}")
+        if user_profile.skills:
+            lines.append(f"User's skills: {', '.join(user_profile.skills)}")
+        if user_profile.interests:
+            lines.append(f"User's interests: {', '.join(user_profile.interests)}")
 
     return "\n".join(lines)
 
@@ -79,13 +79,13 @@ def _on_chat_message(event: DomainEvent) -> None:
             session_id=session_id,
             limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
         )
-        extraction_input = profile_service.build_profile_extraction_input(messages)
+        extraction_input = profile_service.build_extraction_input(messages)
         if not extraction_input:
             return
 
         raw_result = chat_service.build_profile_extraction_response(extraction_input)
-        extraction_result = profile_service.parse_profile_extraction_result(raw_result)
-        profile = profile_service.apply_profile_extraction_result(
+        extraction_result = profile_service.parse_extraction_result(raw_result)
+        profile = profile_service.apply_extraction_result_for_user(
             db,
             user_id=event.user_id,
             result=extraction_result,
@@ -163,7 +163,7 @@ def _on_goal_detected(event: DomainEvent) -> None:
             logger.warning("Goal not found for breakdown goal_id=%s user_id=%s", goal_id, event.user_id)
             return
 
-        user_profile = profile_service.get_user_profile_context(db, event.user_id)
+        user_profile = profile_service.get_profile_for_user(db, event.user_id)
         prompt = _build_goal_breakdown_prompt(goal.title, goal.description, user_profile)
         raw_response = chat_service.build_goal_breakdown_response(prompt)
         breakdown_data = breakdown_service.parse_breakdown_response(raw_response)
