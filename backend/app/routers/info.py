@@ -20,9 +20,12 @@ def update_my_info(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = info_service.update_my_info(db, current_user.id, info_in)
+    try:
+        user = info_service.update_my_info(db, current_user.id, info_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: User not found")
     return user
 
 
@@ -35,8 +38,8 @@ def change_my_password(
     try:
         user = info_service.change_my_password(db, current_user.id, password_in)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"INFO_4002: {exc}") from exc
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: User not found")
     return user

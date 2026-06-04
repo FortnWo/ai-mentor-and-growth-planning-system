@@ -5,7 +5,13 @@ import CompactActionMenu from '../components/CompactActionMenu'
 import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
 import { createWebSocket } from '../utils/ws'
 import type { ChatMessageRead, ChatSessionRead, MessageDeliveryStatus } from '../api/chat'
-import { authState, refreshCurrentUser } from '../stores/auth'
+import { authState, isFullAdmin, refreshCurrentUser } from '../stores/auth'
+
+const adminMode = computed(() => isFullAdmin(authState.user))
+const assistantLabel = computed(() => (adminMode.value ? 'AI管理助手' : 'AI 导师'))
+const inputPlaceholder = computed(() =>
+  adminMode.value ? '向 AI 管理助手提问…' : '向你的 AI 导师提问…',
+)
 
 const sessions = ref<ChatSessionRead[]>([])
 const selectedSessionId = ref<number | null>(null)
@@ -679,6 +685,7 @@ watch(
           </div>
 
           <div class="chat-panel__title-actions">
+            <span v-if="adminMode" class="chip chip--admin admin-badge">管理助手模式</span>
             <button class="button button--primary" :disabled="loading" type="button" @click="startNewSession">
               新建聊天
             </button>
@@ -693,7 +700,7 @@ watch(
             'message-bubble',
             message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
           ]">
-            <strong>{{ message.role === 'user' ? '' : 'AI 导师' }}</strong>
+            <strong>{{ message.role === 'user' ? '' : assistantLabel }}</strong>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">正在生成…</small>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">生成失败</small>
             <p>{{ message.content }}</p>
@@ -703,7 +710,7 @@ watch(
         </div>
 
         <form class="message-form" @submit.prevent="submitMessage">
-          <input v-model="input" :disabled="loading" class="input" placeholder="向你的 AI 导师提问…" />
+          <input v-model="input" :disabled="loading" class="input" :placeholder="inputPlaceholder" />
           <button class="button button--primary" :disabled="loading" type="submit">发送</button>
         </form>
       </section>
@@ -1050,5 +1057,16 @@ watch(
   .message-form {
     grid-template-columns: 1fr;
   }
+}
+
+.chip--admin {
+  background: rgba(var(--accent-1-rgb), 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(var(--accent-1-rgb), 0.3);
+}
+
+.admin-badge {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.65rem;
 }
 </style>

@@ -41,3 +41,10 @@ export const ADMIN_PERMISSION_OPTIONS: AdminPermissionOption[] = [
 ]
 
 export const ADMIN_PERMISSION_KEYS = ADMIN_PERMISSION_OPTIONS.map((option) => option.key)
+
+/** Default permissions granted by the one-click admin grant button. */
+export const DEFAULT_ONE_CLICK_ADMIN_PERMISSIONS: AdminPermissionKey[] = [
+  'user.read',
+  'user.create',
+  'user.update',
+]

@@ -61,6 +61,8 @@ class Settings(BaseSettings):
         "Given the first user message and assistant reply, output a concise Chinese title (4-16 characters). "
         "Return only the title text: no quotes, punctuation, markdown, or explanation."
     )
+    ADMIN_LLM_SYSTEM_PROMPT: str | None = None
+    APP_SECRET_KEY: str = "ai-mentor-default-secret-change-in-production"
     RUN_LIVE_AI_TESTS: bool = False
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"

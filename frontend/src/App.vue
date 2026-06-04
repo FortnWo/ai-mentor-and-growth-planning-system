@@ -4,7 +4,15 @@ import { RouterLink, RouterView } from 'vue-router'
 import { useRouter } from 'vue-router'
 
 import ThemeToggle from './components/ThemeToggle.vue'
-import { authState, clearAuthSession, isAdmin, loadStoredAuthState, refreshCurrentUser } from './stores/auth'
+import {
+  authState,
+  clearAuthSession,
+  hasAdminPermission,
+  isFullAdmin,
+  isLimitedAdmin,
+  loadStoredAuthState,
+  refreshCurrentUser,
+} from './stores/auth'
 
 const router = useRouter()
 const mobileMenuOpen = ref(false)
@@ -13,22 +21,43 @@ const glowY = ref(0)
 const glowVisible = ref(false)
 
 const authenticated = computed(() => Boolean(authState.token))
-const admin = computed(() => isAdmin(authState.user))
+const fullAdmin = computed(() => isFullAdmin(authState.user))
+const limitedAdmin = computed(() => isLimitedAdmin(authState.user))
 const userLabel = computed(() => authState.user?.full_name || authState.user?.username || 'User')
+
+const studentNavigationItems = [
+  { to: '/chat', label: '聊天' },
+  { to: '/profile', label: '用户画像' },
+  { to: '/plan', label: '目标计划' },
+  { to: '/growth', label: '成长记录' },
+  { to: '/info', label: '我的资料' },
+]
+
 const navigationItems = computed(() => {
   if (!authenticated.value) {
     return [{ to: '/login', label: '登录' }]
   }
 
-  return [
+  if (fullAdmin.value) {
+    return [
+      { to: '/chat', label: '管理助手' },
+      { to: '/admin/users', label: '用户管理' },
+      { to: '/admin/system', label: '系统维护' },
+      { to: '/info', label: '我的资料' },
+    ]
+  }
 
-    { to: '/chat', label: '聊天' },
-    { to: '/profile', label: '用户画像' },
-    { to: '/plan', label: '目标计划' },
-    { to: '/growth', label: '成长记录' },
-    ...(admin.value ? [{ to: '/admin/users', label: '用户管理' }] : []),
-    { to: '/info', label: '我的资料' },
-  ]
+  const items = [...studentNavigationItems]
+  if (limitedAdmin.value && hasAdminPermission(authState.user, 'user.read')) {
+    items.splice(1, 0, { to: '/admin/users', label: '用户管理' })
+  }
+  return items
+})
+
+const headerStatusLabel = computed(() => {
+  if (fullAdmin.value) return '管理员权限'
+  if (limitedAdmin.value) return '临时管理权限'
+  return '学生工作台'
 })
 
 function closeMobileMenu() {
@@ -89,7 +118,7 @@ async function logout() {
 
       <div v-if="authenticated" class="header-status">
         <span class="status-dot"></span>
-        <span>{{ admin ? '管理员权限' : '学生工作台' }}</span>
+        <span>{{ headerStatusLabel }}</span>
       </div>
 
       <nav class="desktop-nav" :class="{ 'desktop-nav--guest': !authenticated }">

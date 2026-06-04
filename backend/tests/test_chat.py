@@ -58,7 +58,7 @@ def mocked_ai_response(monkeypatch):
         '{"interests":[],"skills":[],"goals":[],"study_habits":[],"personality":[],"preferences":[]}'
     )
 
-    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: ai_text)
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message, **_: ai_text)
     monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: empty_profile_json)
     monkeypatch.setattr(
         chat_service,

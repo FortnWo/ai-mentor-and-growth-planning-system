@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 
 import { getMe, login as loginApi } from '../api/auth'
 import type { LoginPayload } from '../api/auth'
+import type { AdminPermissionKey } from '../constants/adminPermissions'
 import type { UserRead } from '../api/user'
 
 const ACCESS_TOKEN_STORAGE_KEY = 'ai_mentor_access_token'
@@ -85,10 +86,45 @@ function isAdmin(user: UserRead | null): boolean {
   return user?.role === 'admin'
 }
 
+function isFullAdmin(user: UserRead | null): boolean {
+  if (!user || user.role !== 'admin') {
+    return false
+  }
+
+  if (user.is_system_admin) {
+    return true
+  }
+
+  return !user.admin_permission_level || user.admin_permission_level === 'full'
+}
+
+function isLimitedAdmin(user: UserRead | null): boolean {
+  return isAdmin(user) && !isFullAdmin(user)
+}
+
+function hasAdminPermission(user: UserRead | null, permission: AdminPermissionKey): boolean {
+  if (!user || user.role !== 'admin') {
+    return false
+  }
+
+  if (user.is_system_admin) {
+    return true
+  }
+
+  if (!user.admin_permission_level || user.admin_permission_level === 'full') {
+    return true
+  }
+
+  return user.admin_permissions.includes(permission)
+}
+
 export {
   authState,
   clearAuthSession,
+  hasAdminPermission,
   isAdmin,
+  isFullAdmin,
+  isLimitedAdmin,
   loadStoredAuthState,
   login,
   refreshCurrentUser,

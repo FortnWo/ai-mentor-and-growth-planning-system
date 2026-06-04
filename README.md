@@ -42,11 +42,16 @@
 mysql -u root -p < database/schema.sql
 ```
 
-若数据库在引入画像概要功能之前已创建，请额外执行迁移脚本以添加 `portrait_summary` 列：
+若数据库在引入画像概要功能之前已创建，请按顺序执行迁移脚本（或在启动后端时由 `ensure_database_schema` 自动补齐关键表/列）：
 
 ```bash
 mysql -u root -p ai_mentor_db < database/migrations/001_add_portrait_summary.sql
+mysql -u root -p ai_mentor_db < database/migrations/002_add_user_extended_fields.sql
+mysql -u root -p ai_mentor_db < database/migrations/003_add_verification_codes.sql
+mysql -u root -p ai_mentor_db < database/migrations/004_add_system_config.sql
 ```
+
+缺少 `users.risk_flag` 等列时，所有依赖用户表的 API 会返回 500（日志中为 SQLAlchemy `OperationalError` / e3q8），前端表现为请求超时或失败。
 
 ### 2. 启动后端
 
@@ -62,7 +67,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-exclude "logs/*" --port 8000
 ```
 
 Swagger UI：http://localhost:8000/docs

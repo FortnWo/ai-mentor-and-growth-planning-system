@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { login } from '../stores/auth'
 import { getApiErrorMessage } from '../utils/apiError'
@@ -100,6 +100,10 @@ async function submit() {
         </form>
 
         <p v-if="error" class="feedback feedback--error">{{ error }}</p>
+
+        <div class="auth-footer">
+          <RouterLink class="forgot-link" to="/forgot-password">忘记密码？</RouterLink>
+        </div>
       </div>
     </section>
   </div>
@@ -133,6 +137,22 @@ async function submit() {
   font-family: var(--font-display);
   color: var(--heading);
   font-size: clamp(1.3rem, 2vw, 1.6rem);
+}
+
+.auth-footer {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+.forgot-link {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.forgot-link:hover {
+  color: var(--primary);
 }
 
 @media (max-width: 1024px) {

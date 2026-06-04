@@ -8,6 +8,8 @@ from app.models.domain_event import DomainEventRecord
 from app.models.growth_record import GrowthRecord, GrowthRecordType, GrowthRecordSource
 from app.models.growth_aggregate import GrowthDailyAggregate
 from app.models.growth_summary import GrowthSummary
+from app.models.verification_code import VerificationCode
+from app.models.system_config import SystemConfig, AIUsageLog
 
 __all__ = [
     "User",
@@ -31,4 +33,7 @@ __all__ = [
     "GrowthRecordSource",
     "GrowthDailyAggregate",
     "GrowthSummary",
+    "VerificationCode",
+    "SystemConfig",
+    "AIUsageLog",
 ]

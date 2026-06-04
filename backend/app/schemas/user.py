@@ -13,6 +13,9 @@ class UserBase(BaseModel):
     major: str | None = Field(default=None, max_length=255)
     year_of_study: int | None = Field(default=None, ge=1, le=12)
     bio: str | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=500)
+    enrollment_year: int | None = Field(default=None, ge=1900, le=2100)
 
 
 class UserCreate(UserBase):
@@ -69,6 +72,9 @@ class InfoUpdate(BaseModel):
     major: str | None = Field(default=None, max_length=255)
     year_of_study: int | None = Field(default=None, ge=1, le=12)
     bio: str | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=500)
+    email: EmailStr | None = None
 
 
 class PasswordUpdate(BaseModel):
@@ -86,10 +92,12 @@ class UserRead(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    is_system_admin: bool = False
     admin_permission_level: AdminPermissionLevel | None = None
     admin_permissions: list[str] = Field(default_factory=list)
     admin_expires_at: datetime | None = None
     last_login_at: datetime | None = None
+    computed_year_of_study: int | None = None
     created_at: datetime
     updated_at: datetime
 

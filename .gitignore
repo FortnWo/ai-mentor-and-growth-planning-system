@@ -225,5 +225,8 @@ dist/
 .DS_Store
 Thumbs.db
 
+# DB
+test.sql
+
 产品愿景.md
 架构蓝图.md

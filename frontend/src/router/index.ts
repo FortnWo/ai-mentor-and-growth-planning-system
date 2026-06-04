@@ -1,12 +1,22 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
-import { authState, isAdmin, loadStoredAuthState, refreshCurrentUser } from '../stores/auth'
+import type { AdminPermissionKey } from '../constants/adminPermissions'
+import {
+  authState,
+  hasAdminPermission,
+  isAdmin,
+  isFullAdmin,
+  loadStoredAuthState,
+  refreshCurrentUser,
+} from '../stores/auth'
 
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean
     requiresAdmin?: boolean
+    requiresFullAdmin?: boolean
+    adminPermission?: AdminPermissionKey
     guestOnly?: boolean
   }
 }
@@ -29,6 +39,12 @@ const routes: RouteRecordRaw[] = [
     meta: { guestOnly: true },
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('../views/ForgotPasswordView.vue'),
+    meta: { guestOnly: true },
+  },
+  {
     path: '/chat',
     name: 'Chat',
     component: () => import('../views/ChatView.vue'),
@@ -47,10 +63,22 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/admin/users/:userId/usage',
+    name: 'AdminUserUsage',
+    component: () => import('../views/AdminUserUsageView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, requiresFullAdmin: true },
+  },
+  {
     path: '/admin/users',
     name: 'AdminUsers',
     component: () => import('../views/AdminUsersView.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true },
+    meta: { requiresAuth: true, requiresAdmin: true, adminPermission: 'user.read' },
+  },
+  {
+    path: '/admin/system',
+    name: 'AdminSystem',
+    component: () => import('../views/AdminSystemView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, requiresFullAdmin: true },
   },
   {
     path: '/plan',
@@ -91,8 +119,19 @@ router.beforeEach(async (to) => {
     return '/chat'
   }
 
+  if (to.meta.requiresFullAdmin && !isFullAdmin(authState.user)) {
+    return '/home'
+  }
+
+  if (to.meta.adminPermission && !hasAdminPermission(authState.user, to.meta.adminPermission)) {
+    return '/home'
+  }
+
   if (to.meta.guestOnly && authState.token) {
-    return isAdmin(authState.user) ? '/admin/users' : '/home'
+    if (isFullAdmin(authState.user)) {
+      return '/admin/users'
+    }
+    return '/home'
   }
 
   return true

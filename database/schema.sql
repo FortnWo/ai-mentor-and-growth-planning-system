@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS users (
     major VARCHAR(255) NULL,
     year_of_study TINYINT UNSIGNED NULL,
     bio TEXT NULL,
+    phone VARCHAR(20) NULL COMMENT '手机号码',
+    address VARCHAR(500) NULL COMMENT '地址',
+    enrollment_year SMALLINT UNSIGNED NULL COMMENT '入学年份，用于运行时计算年级',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_users_email (email)
+    INDEX idx_users_email (email),
+    INDEX idx_users_enrollment_year (enrollment_year)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------

@@ -16,6 +16,9 @@ export interface UserCreatePayload {
   major?: string
   year_of_study?: number
   bio?: string
+  phone?: string
+  address?: string
+  enrollment_year?: number
 }
 
 export interface UserUpdatePayload {
@@ -31,6 +34,9 @@ export interface UserUpdatePayload {
   major?: string
   year_of_study?: number
   bio?: string
+  phone?: string
+  address?: string
+  enrollment_year?: number
 }
 
 export interface AdminPrivilegeUpdatePayload {
@@ -45,6 +51,7 @@ export interface UserRead {
   email: string
   role: UserRole
   is_active: boolean
+  is_system_admin?: boolean
   admin_permission_level?: AdminPermissionLevel
   admin_permissions: string[]
   admin_expires_at?: string
@@ -53,14 +60,27 @@ export interface UserRead {
   major?: string
   year_of_study?: number
   bio?: string
+  phone?: string
+  address?: string
+  enrollment_year?: number
+  computed_year_of_study?: number
   created_at: string
   updated_at: string
 }
 
-export const listUsers = (skip = 0, limit = 100): Promise<UserRead[]> =>
+export type ListUsersParams = {
+  skip?: number
+  limit?: number
+  username_like?: string
+  major?: string
+  year?: number
+  is_active?: boolean
+}
+
+export const listUsers = (skip = 0, limit = 100, filters: Omit<ListUsersParams, 'skip' | 'limit'> = {}): Promise<UserRead[]> =>
   apiClient
     .get<UserRead[]>('/admin/users', {
-      params: { skip, limit },
+      params: { skip, limit, ...filters },
     })
     .then((response) => response.data)
 

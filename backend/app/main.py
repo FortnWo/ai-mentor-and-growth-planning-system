@@ -15,14 +15,15 @@ from app.core.database import Base, engine
 from app.core.config import settings
 from app.routers import action_plan, auth, chat, goal, health, info, profile, user
 from app.routers import ws as ws_router
-from app.routers import growth_record
+from app.routers import growth_record, password_reset, admin_system
 from app.core import ws_manager
 from app.workflows import initialize_growth_cycle_orchestrator
 
 
 error_logger = logging.getLogger("ai_mentor.errors")
 if not error_logger.handlers:
-    error_log_dir = Path(__file__).resolve().parents[1] / "logs"
+    # Same path as admin_system /logs/error (backend/logs/error.log)
+    error_log_dir = Path(__file__).resolve().parents[2] / "logs"
     error_log_dir.mkdir(parents=True, exist_ok=True)
     error_log_path = error_log_dir / "error.log"
 
@@ -86,7 +87,10 @@ def _cors_headers_for_origin(origin: str | None) -> dict[str, str]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from app.core.schema_bootstrap import ensure_database_schema
+
     Base.metadata.create_all(bind=engine)
+    ensure_database_schema(engine)
     ensure_bootstrap_admin()
     initialize_growth_cycle_orchestrator()
     # attach main event loop to websocket manager for cross-thread scheduling
@@ -147,6 +151,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(password_reset.router)
+app.include_router(admin_system.router)
 app.include_router(chat.router)
 app.include_router(user.router)
 app.include_router(info.router)

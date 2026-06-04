@@ -1,8 +1,9 @@
 import json
+from datetime import date
 from enum import Enum
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text, func, text
-from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Integer, SmallInteger, String, Text, func, text
+from sqlalchemy.dialects.mysql import INTEGER as MYSQL_INTEGER, SMALLINT as MYSQL_SMALLINT
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -19,6 +20,7 @@ class AdminPermissionLevel(str, Enum):
 
 
 UnsignedInt = Integer().with_variant(MYSQL_INTEGER(unsigned=True), "mysql")
+UnsignedSmallInt = SmallInteger().with_variant(MYSQL_SMALLINT(unsigned=True), "mysql")
 
 
 class User(Base):
@@ -53,6 +55,10 @@ class User(Base):
     major = Column(String(255), nullable=True)
     year_of_study = Column(Integer, nullable=True)
     bio = Column(Text, nullable=True)
+    phone = Column(String(20), nullable=True)
+    address = Column(String(500), nullable=True)
+    enrollment_year = Column(UnsignedSmallInt, nullable=True)
+    risk_flag = Column(Integer, nullable=False, server_default=text("0"))
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -81,6 +87,12 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def is_system_admin(self) -> bool:
+        from app.core.system_admin import is_system_admin as check_system_admin
+
+        return check_system_admin(self)
 
     @property
     def admin_permissions(self) -> list[str]:
@@ -112,3 +124,13 @@ class User(Base):
                 normalized_permissions.append(normalized)
 
         self._admin_permissions_json = json.dumps(normalized_permissions, ensure_ascii=False)
+
+    @property
+    def computed_year_of_study(self) -> int | None:
+        """计算当前年级：入学年份到当前学年已过的年数（从当年 9 月起算）。"""
+        if not self.enrollment_year:
+            return None
+        today = date.today()
+        academic_year_start = today.year if today.month >= 9 else today.year - 1
+        year = academic_year_start - self.enrollment_year + 1
+        return max(1, year) if year >= 1 else None

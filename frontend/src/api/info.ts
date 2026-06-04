@@ -6,6 +6,9 @@ export interface InfoUpdatePayload {
   major?: string
   year_of_study?: number
   bio?: string
+  phone?: string
+  address?: string
+  email?: string
 }
 
 export interface PasswordChangePayload {

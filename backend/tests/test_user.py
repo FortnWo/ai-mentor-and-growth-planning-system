@@ -39,6 +39,20 @@ def test_admin_login_and_me(client):
     assert response.json()["role"] == "admin"
 
 
+def test_legacy_admin_with_null_permission_level_can_list_users(client, db_session):
+    from app.models.user import User
+
+    admin_user = db_session.query(User).filter(User.username == ADMIN_USERNAME).first()
+    assert admin_user is not None
+    admin_user.admin_permission_level = None
+    admin_user.admin_permissions = []
+    db_session.add(admin_user)
+    db_session.commit()
+
+    list_response = client.get("/admin/users", headers=admin_headers(client))
+    assert list_response.status_code == 200
+
+
 def test_admin_can_create_student_user(client):
     response = client.post(
         "/admin/users",
@@ -140,6 +154,71 @@ def test_admin_can_update_and_delete_user(client):
 
     fetch_response = client.get(f"/admin/users/{user_id}", headers=admin_headers(client))
     assert fetch_response.status_code == 404
+
+
+def test_limited_admin_cannot_access_system_config(client):
+    headers = admin_headers(client)
+
+    create_response = client.post(
+        "/admin/users",
+        json=make_student_payload(10),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    user_id = create_response.json()["id"]
+
+    grant_response = client.patch(
+        f"/admin/users/{user_id}/admin-access",
+        json={
+            "permission_level": "limited",
+            "permissions": ["user.read", "user.create", "user.update"],
+        },
+        headers=headers,
+    )
+    assert grant_response.status_code == 200
+
+    limited_login = client.post(
+        "/auth/login",
+        json={"username": "2022025310", "password": "Student@12345"},
+    )
+    assert limited_login.status_code == 200
+    limited_headers = {"Authorization": f"Bearer {limited_login.json()['access_token']}"}
+
+    system_response = client.get("/admin/system/ai-config", headers=limited_headers)
+    assert system_response.status_code == 403
+
+    users_response = client.get("/admin/users", headers=limited_headers)
+    assert users_response.status_code == 200
+
+
+def test_system_admin_permissions_cannot_be_modified(client):
+    headers = admin_headers(client)
+
+    list_response = client.get("/admin/users", headers=headers)
+    admin_user = next(user for user in list_response.json() if user["username"] == ADMIN_USERNAME)
+    admin_id = admin_user["id"]
+    assert admin_user["is_system_admin"] is True
+    assert admin_user["admin_permission_level"] == "full"
+
+    grant_response = client.patch(
+        f"/admin/users/{admin_id}/admin-access",
+        json={"permission_level": "limited", "permissions": ["user.read"]},
+        headers=headers,
+    )
+    assert grant_response.status_code == 409
+
+    revoke_response = client.delete(f"/admin/users/{admin_id}/admin-access", headers=headers)
+    assert revoke_response.status_code == 409
+
+    demote_response = client.put(
+        f"/admin/users/{admin_id}",
+        json={"role": "user"},
+        headers=headers,
+    )
+    assert demote_response.status_code == 409
+
+    delete_response = client.delete(f"/admin/users/{admin_id}", headers=headers)
+    assert delete_response.status_code == 409
 
 
 def test_cannot_change_admin_active_status(client):

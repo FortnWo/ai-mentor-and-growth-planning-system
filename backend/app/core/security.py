@@ -79,10 +79,16 @@ def is_admin_active(user: User) -> bool:
 
 
 def has_admin_access(user: User, permission: str | None = None) -> bool:
+    from app.core.system_admin import is_system_admin
+
     if not is_admin_active(user):
         return False
 
-    if user.admin_permission_level == AdminPermissionLevel.FULL:
+    if is_system_admin(user):
+        return True
+
+    # Legacy admins may have role=admin with NULL level; treat as full (see user_service._apply_admin_defaults).
+    if user.admin_permission_level is None or user.admin_permission_level == AdminPermissionLevel.FULL:
         return True
 
     if permission is None:
@@ -91,10 +97,34 @@ def has_admin_access(user: User, permission: str | None = None) -> bool:
     return permission in user.admin_permissions
 
 
+def has_full_admin_access(user: User) -> bool:
+    from app.core.system_admin import is_system_admin
+
+    if not is_admin_active(user):
+        return False
+
+    if is_system_admin(user):
+        return True
+
+    return user.admin_permission_level is None or user.admin_permission_level == AdminPermissionLevel.FULL
+
+
 def require_admin(permission: str | None = None):
     def dependency(current_user: User = Depends(get_current_user)) -> User:
         if not has_admin_access(current_user, permission):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privilege required")
+        return current_user
+
+    return dependency
+
+
+def require_full_admin():
+    def dependency(current_user: User = Depends(get_current_user)) -> User:
+        if not has_full_admin_access(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Full admin privilege required",
+            )
         return current_user
 
     return dependency

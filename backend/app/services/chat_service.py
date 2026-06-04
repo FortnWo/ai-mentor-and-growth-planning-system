@@ -213,8 +213,8 @@ def suggest_session_title(message: str) -> str:
     return f"{first_sentence[:24].rstrip()}..."
 
 
-def build_ai_response(message: str, *, instructions: str | None = None) -> str:
-    return ai_service.build_chat_response(message, instructions=instructions)
+def build_ai_response(message: str, *, instructions: str | None = None, user_id: int | None = None) -> str:
+    return ai_service.build_chat_response(message, instructions=instructions, user_id=user_id)
 
 
 def build_profile_extraction_response(message: str) -> str:
@@ -252,7 +252,7 @@ def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tupl
         role=MessageRole.USER,
         content=payload.message.strip(),
     )
-    assistant_content = build_ai_response(payload.message)
+    assistant_content = build_ai_response(payload.message, user_id=user_id)
     assistant_message = ChatMessage(
         session_id=session.id,
         role=MessageRole.ASSISTANT,
@@ -356,9 +356,20 @@ def process_message_in_background(session_id: int, message: str) -> None:
                 pass
 
         # build response from LLM (may be slow)
+        # Determine if session owner is admin → use admin chat path
         assistant_content = None
         try:
-            assistant_content = build_ai_response(prompt)
+            is_admin_session = False
+            if session_obj:
+                from app.models.user import User, UserRole
+                owner_user = db.query(User).filter(User.id == session_obj.user_id).first()
+                is_admin_session = bool(owner_user and owner_user.role == UserRole.ADMIN)
+
+            if is_admin_session:
+                from app.services.ai_service import build_admin_chat_response
+                assistant_content = build_admin_chat_response(prompt, db=db, user_id=owner_id)
+            else:
+                assistant_content = build_ai_response(prompt, user_id=owner_id)
         except Exception:
             assistant_content = ASSISTANT_FAILURE_MESSAGE
 
