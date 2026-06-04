@@ -72,12 +72,6 @@ const grantForm = reactive<GrantFormState>({
 })
 
 const isAdminCreate = computed(() => createForm.role === 'admin')
-const userStats = computed(() => ({
-  total: users.value.length,
-  active: users.value.filter((user) => user.is_active).length,
-  admins: users.value.filter((user) => user.role === 'admin').length,
-  students: users.value.filter((user) => user.role !== 'admin').length,
-}))
 
 function clearMessages() {
   feedback.value = ''
@@ -304,50 +298,6 @@ onMounted(async () => {
 
 <template>
   <div class="page page--wide admin-page">
-    <section class="page-header glass-card panel hero-frame reveal">
-      <div class="title-row">
-        <div>
-          <p class="page-kicker">管理控制台</p>
-          <h1 class="page-title">用高密度控制面板管理用户。</h1>
-          <p class="page-subtitle">
-            在一个安静的界面里创建账号、授予权限并审计用户列表。
-          </p>
-        </div>
-
-        <div class="hero-actions">
-          <button class="button button--ghost" :disabled="loading" type="button" @click="refreshUsers">
-            刷新用户
-          </button>
-        </div>
-      </div>
-
-      <div class="stat-grid">
-        <article class="stat-card">
-          <p class="stat-label">用户总数</p>
-          <p class="stat-value">{{ userStats.total }}</p>
-          <p class="stat-note">系统中当前存在的账号</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">启用</p>
-          <p class="stat-value">{{ userStats.active }}</p>
-          <p class="stat-note">可登录账号</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">管理员</p>
-          <p class="stat-value">{{ userStats.admins }}</p>
-          <p class="stat-note">具备权限的账号</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">学生</p>
-          <p class="stat-value">{{ userStats.students }}</p>
-          <p class="stat-note">普通用户账号</p>
-        </article>
-      </div>
-    </section>
-
     <p v-if="feedback" class="feedback feedback--success">{{ feedback }}</p>
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
@@ -525,7 +475,12 @@ onMounted(async () => {
           <h2 class="section-title">审计并管理名单</h2>
         </div>
 
-        <span class="chip chip--neutral">{{ users.length }} records</span>
+        <div class="table-panel__actions">
+          <span class="chip chip--neutral">{{ users.length }} records</span>
+          <button class="button button--ghost" :disabled="loading" type="button" @click="refreshUsers">
+            刷新用户
+          </button>
+        </div>
       </div>
 
       <div class="table-shell">
@@ -643,6 +598,13 @@ onMounted(async () => {
 
 .table-actions {
   min-width: 300px;
+}
+
+.table-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
 }
 
 .section-title {

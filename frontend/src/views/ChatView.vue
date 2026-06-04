@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import CompactActionMenu from '../components/CompactActionMenu'
 import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
@@ -18,9 +18,99 @@ const renameDraftTitle = ref<string>('')
 const deletingSessionId = ref<number | null>(null)
 const error = ref<string>('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const sessionsPanelOpen = ref<boolean>(false)
+const sessionsPanelOpen = ref<boolean>(true)
+
+const SESSIONS_WIDTH_STORAGE_KEY = 'chat_sessions_panel_width_percent'
+const SESSIONS_WIDTH_MIN = 15
+const SESSIONS_WIDTH_MAX = 40
+const SESSIONS_WIDTH_DEFAULT = 20
+const LAYOUT_RESIZER_PX = 10
+
+const chatLayoutRef = ref<HTMLElement | null>(null)
+const sessionsWidthPercent = ref<number>(SESSIONS_WIDTH_DEFAULT)
+const isResizingSessions = ref<boolean>(false)
 
 let ws: WebSocket | null = null
+
+function clampSessionsWidth(value: number) {
+  return Math.min(SESSIONS_WIDTH_MAX, Math.max(SESSIONS_WIDTH_MIN, value))
+}
+
+function loadSessionsWidth() {
+  const raw = localStorage.getItem(SESSIONS_WIDTH_STORAGE_KEY)
+  if (!raw) {
+    return
+  }
+
+  const parsed = Number.parseFloat(raw)
+  if (Number.isFinite(parsed)) {
+    sessionsWidthPercent.value = clampSessionsWidth(parsed)
+  }
+}
+
+function saveSessionsWidth() {
+  localStorage.setItem(SESSIONS_WIDTH_STORAGE_KEY, String(sessionsWidthPercent.value))
+}
+
+const chatLayoutColumns = computed(() => {
+  if (!sessionsPanelOpen.value) {
+    return '0 0 minmax(0, 1fr)'
+  }
+
+  const left = sessionsWidthPercent.value
+  return `minmax(0, ${left}%) ${LAYOUT_RESIZER_PX}px minmax(0, 1fr)`
+})
+
+function updateSessionsWidthFromPointer(clientX: number) {
+  const layout = chatLayoutRef.value
+  if (!layout) {
+    return
+  }
+
+  const rect = layout.getBoundingClientRect()
+  const ratio = ((clientX - rect.left) / rect.width) * 100
+  sessionsWidthPercent.value = clampSessionsWidth(ratio)
+}
+
+function onResizerPointerDown(event: PointerEvent) {
+  if (!sessionsPanelOpen.value) {
+    return
+  }
+
+  isResizingSessions.value = true
+  event.preventDefault()
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  updateSessionsWidthFromPointer(event.clientX)
+}
+
+function onResizerPointerMove(event: PointerEvent) {
+  if (!isResizingSessions.value) {
+    return
+  }
+
+  updateSessionsWidthFromPointer(event.clientX)
+}
+
+function endSessionsResize(event: PointerEvent) {
+  if (!isResizingSessions.value) {
+    return
+  }
+
+  isResizingSessions.value = false
+  if (event.currentTarget instanceof HTMLElement && event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  saveSessionsWidth()
+}
+
+function onResizerLostPointerCapture() {
+  if (!isResizingSessions.value) {
+    return
+  }
+
+  isResizingSessions.value = false
+  saveSessionsWidth()
+}
 
 interface RefreshSessionsOptions {
   loadActiveMessages?: boolean
@@ -32,6 +122,19 @@ interface LoadMessagesOptions {
 }
 
 const ASSISTANT_FAILURE_FALLBACK = '(The assistant failed to respond.)'
+const DEFAULT_SESSION_TITLE = '未命名会话'
+
+function displaySessionTitle(title?: string | null) {
+  const trimmed = title?.trim()
+  return trimmed && trimmed !== DEFAULT_SESSION_TITLE ? trimmed : DEFAULT_SESSION_TITLE
+}
+
+function updateSessionTitleInList(sessionId: number, title: string) {
+  const index = sessions.value.findIndex((session) => session.id === sessionId)
+  if (index >= 0) {
+    sessions.value[index] = { ...sessions.value[index], title }
+  }
+}
 
 function getMessageStatus(message: ChatMessageRead): MessageDeliveryStatus {
   if (message.status) {
@@ -105,6 +208,15 @@ function ensureWs() {
           messages.value.push(normalized)
         }
       }
+      return
+    }
+
+    if (data?.type === 'session_title_updated') {
+      const sessionId = data.session_id
+      const title = data.title
+      if (typeof sessionId === 'number' && typeof title === 'string') {
+        updateSessionTitleInList(sessionId, title)
+      }
     }
   })
   // clear on close so ensureWs can reconnect later
@@ -125,6 +237,7 @@ function ensureWs() {
 const activeSession = computed(
   () => sessions.value.find((session) => session.id === selectedSessionId.value) ?? null,
 )
+const activeSessionTitle = computed(() => displaySessionTitle(activeSession.value?.title))
 const sessionCount = computed(() => sessions.value.length)
 const messageCount = computed(() => messages.value.length)
 
@@ -297,7 +410,7 @@ async function deleteCurrentSession(sessionId: number) {
     return
   }
 
-  const confirmed = window.confirm(`确定删除会话 ${session.title || `#${session.id}`} 吗？`)
+  const confirmed = window.confirm(`确定删除会话 ${displaySessionTitle(session.title)} 吗？`)
   if (!confirmed) {
     return
   }
@@ -407,6 +520,8 @@ async function submitMessage() {
         }
       }
     }
+
+    await refreshSessions({ loadActiveMessages: false })
   } catch {
     error.value = '无法发送消息。'
   } finally {
@@ -415,12 +530,20 @@ async function submitMessage() {
 }
 
 onMounted(async () => {
+  loadSessionsWidth()
   if (!authState.user) {
     await refreshCurrentUser()
   }
   await refreshSessions()
   // ensure websocket connects after we refresh user/session info
   ensureWs()
+})
+
+onBeforeUnmount(() => {
+  if (isResizingSessions.value) {
+    isResizingSessions.value = false
+    saveSessionsWidth()
+  }
 })
 
 watch(
@@ -434,52 +557,13 @@ watch(
 
 <template>
   <div class="page page--wide chat-page">
-    <section class="page-header glass-card panel hero-frame reveal">
-      <div class="title-row">
-        <div>
-          <p class="page-kicker">AI 导师聊天</p>
-          <h1 class="page-title">像工作台一样设计的对话指导。</h1>
-          <p class="page-subtitle">
-            在安静而高对比度的工作区中整理会话、回看历史并发送消息。
-          </p>
-        </div>
-
-        <div class="hero-actions">
-          <button class="button button--primary" :disabled="loading" type="button" @click="refreshSessions">
-            刷新会话
-          </button>
-          <button class="button button--ghost" :disabled="loading" type="button" @click="startNewSession">
-            新建聊天
-          </button>
-        </div>
-      </div>
-
-      <div class="stat-grid">
-        <article class="stat-card">
-          <p class="stat-label">会话</p>
-          <p class="stat-value">{{ sessionCount }}</p>
-          <p class="stat-note">已保存的对话线程</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">消息</p>
-          <p class="stat-value">{{ messageCount }}</p>
-          <p class="stat-note">当前线程中的可见消息</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">当前会话</p>
-          <p class="stat-value">{{ activeSession?.title || `Session #${activeSession?.id ?? '-'}` }}</p>
-          <p class="stat-note">
-            {{ activeSession ? new Date(activeSession.created_at).toLocaleString() : '开始一个新的对话' }}
-          </p>
-        </article>
-      </div>
-    </section>
-
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
-    <section :class="['grid-2 chat-layout', { 'chat-layout--sessions-hidden': !sessionsPanelOpen }]">
+    <section
+      ref="chatLayoutRef"
+      :class="['grid-2 chat-layout', { 'chat-layout--resizing': isResizingSessions, 'chat-layout--sessions-hidden': !sessionsPanelOpen }]"
+      :style="{ gridTemplateColumns: chatLayoutColumns }"
+    >
       <aside :class="['panel sessions-panel reveal reveal--delay-1', { 'sessions-panel--hidden': !sessionsPanelOpen }]">
         <div class="title-row">
           <div>
@@ -487,21 +571,39 @@ watch(
             <h2 class="section-title">对话历史</h2>
           </div>
 
-          <span class="chip chip--neutral">共 {{ sessionCount }} 条</span>
+          <div class="sessions-panel__title-tools">
+            <button
+              class="button button--ghost sessions-refresh-btn"
+              :class="{ 'sessions-refresh-btn--loading': loading }"
+              :disabled="loading"
+              type="button"
+              aria-label="刷新会话列表"
+              title="刷新"
+              @click="refreshSessions"
+            >
+              <svg class="sessions-refresh-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6M3 12a9 9 0 1 1 2.64 6.36M3 21v-6h6"
+                />
+              </svg>
+            </button>
+            <span class="chip chip--neutral">共 {{ sessionCount }} 条</span>
+          </div>
         </div>
 
-        <div class="field">
+        <div class="field sessions-panel__title-field">
           <label class="label" for="session-title">自定义会话标题（可选）</label>
-          <input id="session-title" v-model="newSessionTitle" class="input" placeholder="留空则自动根据首条消息生成标题" />
-        </div>
-
-        <div class="button-row">
-          <button class="button button--ghost" :disabled="loading" type="button" @click="refreshSessions">
-            刷新
-          </button>
-          <button class="button button--primary" :disabled="loading" type="button" @click="startNewSession">
-            新建聊天
-          </button>
+          <input
+            id="session-title"
+            v-model="newSessionTitle"
+            class="input sessions-panel__title-input"
+            placeholder="留空则 AI 将在首轮对话后自动生成标题"
+          />
         </div>
 
         <div class="session-list">
@@ -532,12 +634,12 @@ watch(
 
             <template v-else>
               <button class="session-card__main" type="button" @click="loadMessages(session.id)">
-                <strong class="session-card__title">{{ session.title || `会话 #${session.id}` }}</strong>
+                <strong class="session-card__title">{{ displaySessionTitle(session.title) }}</strong>
                 <small>{{ new Date(session.created_at).toLocaleString() }}</small>
               </button>
 
               <div class="session-card__actions">
-                <CompactActionMenu :aria-label="`Open actions for ${session.title || `Session #${session.id}`}`"
+                <CompactActionMenu :aria-label="`Open actions for ${displaySessionTitle(session.title)}`"
                   :items="getSessionActionItems(session)" @select="handleSessionAction(session, $event)" />
               </div>
             </template>
@@ -546,6 +648,22 @@ watch(
 
         <p v-if="!sessions.length" class="empty-state">还没有会话，先发送第一条消息吧。</p>
       </aside>
+
+      <button
+        v-if="sessionsPanelOpen"
+        type="button"
+        class="chat-layout__resizer"
+        aria-label="调整会话栏与聊天区域宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="SESSIONS_WIDTH_MIN"
+        :aria-valuemax="SESSIONS_WIDTH_MAX"
+        :aria-valuenow="Math.round(sessionsWidthPercent)"
+        @pointerdown="onResizerPointerDown"
+        @pointermove="onResizerPointerMove"
+        @pointerup="endSessionsResize"
+        @pointercancel="endSessionsResize"
+        @lostpointercapture="onResizerLostPointerCapture"
+      />
 
       <section class="panel chat-panel reveal reveal--delay-2">
         <div class="title-row">
@@ -556,11 +674,16 @@ watch(
 
             <div>
             <p class="eyebrow">聊天画布</p>
-            <h2 class="section-title">{{ activeSession?.title || '未命名会话' }}</h2>
+            <h2 class="section-title">{{ activeSessionTitle }}</h2>
             </div>
           </div>
 
-          <span class="chip chip--active">{{ messageCount }} messages</span>
+          <div class="chat-panel__title-actions">
+            <button class="button button--primary" :disabled="loading" type="button" @click="startNewSession">
+              新建聊天
+            </button>
+            <span class="chip chip--active">{{ messageCount }} messages</span>
+          </div>
         </div>
 
         <div class="divider"></div>
@@ -570,7 +693,7 @@ watch(
             'message-bubble',
             message.role === 'user' ? 'message-bubble--user' : 'message-bubble--assistant',
           ]">
-            <strong>{{ message.role === 'user' ? '你' : 'AI 导师' }}</strong>
+            <strong>{{ message.role === 'user' ? '' : 'AI 导师' }}</strong>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">正在生成…</small>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">生成失败</small>
             <p>{{ message.content }}</p>
@@ -590,28 +713,61 @@ watch(
 
 <style scoped>
 .chat-layout {
-  grid-template-columns: minmax(280px, 0.9fr) minmax(520px, 1.3fr);
   align-items: stretch;
   min-height: min(68vh, 760px);
-
 }
 
-.chat-layout--sessions-hidden {
-  grid-template-columns: 0 minmax(0, 1fr);
+.chat-layout--resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.chat-layout__resizer {
+  align-self: stretch;
+  justify-self: center;
+  width: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  position: relative;
+  z-index: 2;
+}
+
+.chat-layout__resizer::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  left: 50%;
+  width: 3px;
+  border-radius: 999px;
+  background: rgba(var(--accent-1-rgb), 0.16);
+  transform: translateX(-50%);
+}
+
+.chat-layout__resizer:hover::before,
+.chat-layout__resizer:focus-visible::before,
+.chat-layout--resizing .chat-layout__resizer::before {
+  background: rgba(var(--accent-1-rgb), 0.38);
 }
 
 .sessions-panel,
 .chat-panel {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 1rem;
   min-height: 0;
-  max-height: min(68vh, 760px);
+  max-height: min(78vh, 760px);
 }
 
 .sessions-panel {
-  transition:
-    none;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  transition: none;
 }
 
 .sessions-panel--hidden {
@@ -776,14 +932,70 @@ watch(
 }
 
 .chat-panel {
-  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
   position: relative;
+}
+
+.sessions-panel__title-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sessions-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  color: var(--heading);
+}
+
+.sessions-refresh-btn__icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+
+.sessions-refresh-btn--loading .sessions-refresh-btn__icon {
+  animation: sessions-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes sessions-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sessions-panel__title-field .label {
+  font-size: 0.8rem;
+}
+
+.sessions-panel__title-input {
+  font-size: 0.82rem;
+  padding: 0.52rem 0.72rem;
+}
+
+.sessions-panel__title-input::placeholder {
+  font-size: 0.78rem;
 }
 
 .chat-panel__heading {
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
+}
+
+.chat-panel__title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
 }
 
 .sessions-toggle {
@@ -797,6 +1009,7 @@ watch(
   grid-template-columns: 1fr auto;
   gap: 0.75rem;
   align-items: end;
+  min-width: 0;
 }
 
 .section-title {
@@ -809,9 +1022,13 @@ watch(
 
 @media (max-width: 1024px) {
   .chat-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     min-height: unset;
     transition: none;
+  }
+
+  .chat-layout__resizer {
+    display: none;
   }
 
   .sessions-panel,

@@ -476,20 +476,11 @@ onMounted(() => {
       <button type="button" class="btn btn--secondary error-banner__dismiss" @click="clearError">关闭</button>
     </div>
 
-    <!-- Header -->
-    <section class="page-header glass-card panel hero-frame reveal">
-      <p class="page-kicker">成长规划</p>
-      <h1 class="page-title">目标与路线图</h1>
-      <p class="page-subtitle">
-        设定你的成长目标，并让 AI 帮你拆解成可执行步骤。
-      </p>
-
-      <div class="hero-actions">
-        <button class="btn btn--primary" @click="showCreateForm = !showCreateForm" :disabled="isLoading">
-          {{ showCreateForm ? '取消' : '+ 新建目标' }}
-        </button>
-      </div>
-    </section>
+    <div class="plan-toolbar">
+      <button class="btn btn--primary" @click="showCreateForm = !showCreateForm" :disabled="isLoading">
+        {{ showCreateForm ? '取消' : '+ 新建目标' }}
+      </button>
+    </div>
 
     <!-- Create Form -->
     <section v-if="showCreateForm" class="panel create-form reveal">
@@ -579,17 +570,19 @@ onMounted(() => {
                 <h3 class="detail-card__title">目标拆解</h3>
                 <p class="detail-card__lede">主路径节点默认展开；悬停带分支的节点可查看下级详情。</p>
               </div>
-              <div v-if="breakdownNodes.length > 0" class="breakdown-path-wrap">
-                <BreakdownPathTree
-                  :nodes="breakdownNodes"
-                  :progress-by-main-id="progressByMainId"
-                  :selected-main-id="selectedMainBreakdownId"
-                  @select-main="onSelectMainBreakdown"
-                />
+              <div class="detail-card__body">
+                <div v-if="breakdownNodes.length > 0" class="breakdown-path-wrap">
+                  <BreakdownPathTree
+                    :nodes="breakdownNodes"
+                    :progress-by-main-id="progressByMainId"
+                    :selected-main-id="selectedMainBreakdownId"
+                    @select-main="onSelectMainBreakdown"
+                  />
+                </div>
+                <p v-else class="placeholder detail-card__placeholder">
+                  {{ breakdownStatusMessage }}
+                </p>
               </div>
-              <p v-else class="placeholder detail-card__placeholder">
-                {{ breakdownStatusMessage }}
-              </p>
             </div>
 
             <div class="detail-card detail-card--action-plan">
@@ -618,18 +611,19 @@ onMounted(() => {
                 </div>
               </div>
 
-              <p v-if="actionPlanStatusMessage" class="status-hint">
-                {{ actionPlanStatusMessage }}
-              </p>
+              <div class="detail-card__body">
+                <p v-if="actionPlanStatusMessage" class="status-hint">
+                  {{ actionPlanStatusMessage }}
+                </p>
 
-              <div v-if="isActionPlanLoading" class="placeholder detail-card__placeholder">
-                正在加载行动计划…
-              </div>
-              <div v-else-if="!selectedMainBreakdownId" class="placeholder detail-card__placeholder">
-                点击左侧「目标拆解」中的主节点，查看该阶段的行动计划与执行项。
-              </div>
-              <div v-else>
-                <div v-if="selectedActionPlan" class="action-plan-inner">
+                <div v-if="isActionPlanLoading" class="placeholder detail-card__placeholder">
+                  正在加载行动计划…
+                </div>
+                <div v-else-if="!selectedMainBreakdownId" class="placeholder detail-card__placeholder">
+                  点击左侧「目标拆解」中的主节点，查看该阶段的行动计划与执行项。
+                </div>
+                <div v-else>
+                  <div v-if="selectedActionPlan" class="action-plan-inner">
                 <div class="action-plan-card__header">
                   <div>
                     <h4>{{ selectedActionPlan.title }}</h4>
@@ -687,9 +681,10 @@ onMounted(() => {
                     : '该计划有效，但 AI 没有返回条目，请刷新重新生成。' }}
                 </p>
                 </div>
-                <p v-else class="placeholder detail-card__placeholder">
-                  该主节点尚无行动计划记录，可尝试「重新生成全部」或等待后台生成完成。
-                </p>
+                  <p v-else class="placeholder detail-card__placeholder">
+                    该主节点尚无行动计划记录，可尝试「重新生成全部」或等待后台生成完成。
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -718,6 +713,12 @@ onMounted(() => {
   width: min(1180px, 100%);
   margin: 0 auto;
   padding: 2rem 1rem;
+}
+
+.plan-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
 }
 
 .error-banner {
@@ -913,7 +914,10 @@ onMounted(() => {
 }
 
 .goal-detail--workspace-focus {
+  display: flex;
+  flex-direction: column;
   max-height: min(82vh, 920px);
+  overflow: hidden;
 }
 
 .goal-workspace-card__bar {
@@ -937,6 +941,10 @@ onMounted(() => {
 }
 
 .goal-workspace-card--focused {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   padding: 0.85rem 1rem 1rem;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -945,7 +953,36 @@ onMounted(() => {
 }
 
 .goal-workspace-card--focused .detail-split {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
   margin-top: 0.85rem;
+}
+
+.goal-workspace-card--focused .detail-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(70vh, 780px);
+}
+
+.goal-workspace-card--focused .detail-card__head {
+  flex-shrink: 0;
+  margin-bottom: 0.65rem;
+}
+
+.goal-workspace-card--focused .detail-card__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.25rem;
+}
+
+.goal-workspace-card--focused .breakdown-path-wrap {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .goals-list {
@@ -1104,6 +1141,7 @@ onMounted(() => {
 
 .detail-card__placeholder {
   margin-top: 0.5rem;
+  max-height: auto;
 }
 
 .breakdown-path-wrap {
@@ -1150,6 +1188,22 @@ onMounted(() => {
 
   .breakdown-path-wrap {
     max-height: none;
+    overflow: visible;
+  }
+
+  .goal-detail--workspace-focus {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .goal-workspace-card--focused .detail-card {
+    max-height: none;
+  }
+
+  .goal-workspace-card--focused .detail-card__body {
+    overflow: visible;
+    flex: none;
+    min-height: auto;
   }
 }
 

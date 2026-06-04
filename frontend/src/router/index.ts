@@ -14,7 +14,13 @@ declare module 'vue-router' {
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/chat',
+    redirect: '/home',
+  },
+  {
+    path: '/home',
+    name: 'Home',
+    component: () => import('../views/HomeView.vue'),
+    meta: { requiresAuth: true },
   },
   {
     path: '/login',
@@ -86,7 +92,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.guestOnly && authState.token) {
-    return isAdmin(authState.user) ? '/admin/users' : '/chat'
+    return isAdmin(authState.user) ? '/admin/users' : '/home'
   }
 
   return true

@@ -79,3 +79,21 @@ class ProfileExtractionResult(ProfileBase):
 class ProfileRefreshResponse(BaseModel):
     profile: UserProfileRead
     extracted: ProfileExtractionResult
+
+
+class UserTraitRead(BaseModel):
+    trait_type: str
+    trait_key: str
+    source: str
+    confidence: float | None = None
+    trait_score: float = 1.0
+    last_observed_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProfileInsightsRead(BaseModel):
+    last_extracted_at: datetime | None = None
+    portrait_summary: str | None = None
+    portrait_summary_at: datetime | None = None
+    traits: list[UserTraitRead] = Field(default_factory=list)

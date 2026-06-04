@@ -25,6 +25,13 @@ class Settings(BaseSettings):
         "If unknown, return an empty array for that key. "
         "Do not include markdown or extra commentary."
     )
+    PORTRAIT_SUMMARY_SYSTEM_PROMPT: str = (
+        "You are a student growth mentor. "
+        "Write a concise portrait summary in Chinese (second person, 150-250 characters). "
+        "Use only the trait signals provided in the user message. "
+        "Do not invent facts. "
+        "If no traits are provided, reply exactly: 尚未形成可描述的画像特质，建议多与 AI 导师交流或补充画像字段。"
+    )
     GOAL_BREAKDOWN_ENABLED: bool = True
     GOAL_BREAKDOWN_MESSAGE_WINDOW: int = 5
     GOAL_BREAKDOWN_SYSTEM_PROMPT: str = (
@@ -48,6 +55,11 @@ class Settings(BaseSettings):
         "Use frequency values once, daily, weekly, monthly, or custom. "
         "If unknown, use empty strings or nulls, and keep items as an empty array when no plan can be formed. "
         "Do not include markdown, code fences, or extra commentary."
+    )
+    SESSION_TITLE_SYSTEM_PROMPT: str = (
+        "You are a chat session title generator. "
+        "Given the first user message and assistant reply, output a concise Chinese title (4-16 characters). "
+        "Return only the title text: no quotes, punctuation, markdown, or explanation."
     )
     RUN_LIVE_AI_TESTS: bool = False
 

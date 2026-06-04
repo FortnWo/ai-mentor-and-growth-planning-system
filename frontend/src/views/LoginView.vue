@@ -17,7 +17,7 @@ const error = ref('')
 const submitting = ref(false)
 const redirectTarget = computed(() => {
   const redirect = route.query.redirect
-  return typeof redirect === 'string' && redirect ? redirect : '/chat'
+  return typeof redirect === 'string' && redirect ? redirect : '/home'
 })
 
 async function submit() {

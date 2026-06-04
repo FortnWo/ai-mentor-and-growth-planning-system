@@ -7,7 +7,8 @@ from app.core.config import settings
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.models.profile import UserProfile
 from app.models.user_trait import UserTrait
-from app.schemas.profile import ProfileExtractionResult, UserProfileUpdate
+from app.schemas.profile import ProfileExtractionResult, ProfileInsightsRead, UserProfileUpdate, UserTraitRead
+from app.services import trait_service
 
 PROFILE_FIELDS = (
     "interests",
@@ -18,14 +19,7 @@ PROFILE_FIELDS = (
     "preferences",
 )
 
-TRAIT_TYPE_MAPPING = {
-    "interests": "interest",
-    "skills": "skill",
-    "goals": "goal_signal",
-    "study_habits": "study_habit",
-    "personality": "personality",
-    "preferences": "preference",
-}
+TRAIT_TYPE_MAPPING = trait_service.TRAIT_TYPE_MAPPING
 
 
 def get_profile_for_user(db: Session, user_id: int) -> UserProfile | None:
@@ -58,6 +52,8 @@ def update_profile_for_user(db: Session, user_id: int, profile_in: UserProfileUp
     _sync_traits_for_profile(db, user_id, profile, source="profile_update")
     db.commit()
     db.refresh(profile)
+    refresh_portrait_summary_for_user(db, user_id)
+    db.refresh(profile)
     return profile
 
 
@@ -86,7 +82,101 @@ def apply_extraction_result_for_user(
 
     db.commit()
     db.refresh(profile)
+    refresh_portrait_summary_for_user(db, user_id)
+    db.refresh(profile)
     return profile
+
+
+def get_profile_insights_for_user(db: Session, user_id: int) -> ProfileInsightsRead:
+    profile = get_or_create_profile_for_user(db, user_id)
+    traits = trait_service.list_traits_for_user(db, user_id)
+
+    if traits and not (profile.portrait_summary or "").strip():
+        refresh_portrait_summary_for_user(db, user_id)
+        db.refresh(profile)
+
+    return ProfileInsightsRead(
+        last_extracted_at=profile.last_extracted_at,
+        portrait_summary=profile.portrait_summary,
+        portrait_summary_at=profile.portrait_summary_at,
+        traits=traits,
+    )
+
+
+def refresh_portrait_summary_for_user(db: Session, user_id: int) -> UserProfile:
+    profile = get_or_create_profile_for_user(db, user_id)
+    traits = trait_service.list_traits_for_user(db, user_id)
+
+    if not traits:
+        profile.portrait_summary = _build_template_portrait_summary(traits)
+        profile.portrait_summary_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        db.refresh(profile)
+        return profile
+
+    summary = _generate_portrait_summary(traits)
+    profile.portrait_summary = summary
+    profile.portrait_summary_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def _llm_summary_enabled() -> bool:
+    return bool(settings.LLM_API_KEY and settings.LLM_API_BASE_URL and settings.LLM_MODEL)
+
+
+def _generate_portrait_summary(traits: list[UserTraitRead]) -> str:
+    if _llm_summary_enabled():
+        payload = _build_traits_summary_input(traits)
+        try:
+            from app.services import ai_service
+
+            generated = ai_service.build_portrait_summary_response(payload).strip()
+            if generated:
+                return generated
+        except Exception:
+            pass
+
+    return _build_template_portrait_summary(traits)
+
+
+def _build_traits_summary_input(traits: list[UserTraitRead]) -> str:
+    grouped: dict[str, list[str]] = {}
+    for trait in traits:
+        label = trait_service.TRAIT_TYPE_LABELS.get(trait.trait_type, trait.trait_type)
+        grouped.setdefault(label, []).append(trait.trait_key)
+
+    lines: list[str] = []
+    for trait_type in trait_service.TRAIT_TYPE_ORDER:
+        label = trait_service.TRAIT_TYPE_LABELS.get(trait_type, trait_type)
+        values = grouped.get(label, [])
+        if values:
+            lines.append(f"{label}: {', '.join(values[:8])}")
+
+    return "\n".join(lines).strip()
+
+
+def _build_template_portrait_summary(traits: list[UserTraitRead]) -> str:
+    if not traits:
+        return "尚未形成可描述的画像特质，建议多与 AI 导师交流或补充画像字段。"
+
+    grouped: dict[str, list[str]] = {}
+    for trait in traits:
+        label = trait_service.TRAIT_TYPE_LABELS.get(trait.trait_type, trait.trait_type)
+        grouped.setdefault(label, []).append(trait.trait_key)
+
+    segments: list[str] = []
+    for trait_type in trait_service.TRAIT_TYPE_ORDER:
+        label = trait_service.TRAIT_TYPE_LABELS.get(trait_type, trait_type)
+        values = grouped.get(label, [])
+        if values:
+            segments.append(f"在{label}方面关注 {', '.join(values[:5])}")
+
+    if not segments:
+        return "尚未形成可描述的画像特质，建议多与 AI 导师交流或补充画像字段。"
+
+    return f"你{'，'.join(segments)}。"
 
 
 def _sync_traits_for_profile(db: Session, user_id: int, profile: UserProfile, *, source: str) -> None:

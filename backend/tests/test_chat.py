@@ -54,8 +54,17 @@ def login_user(client, index: int = 1):
 @pytest.fixture()
 def mocked_ai_response(monkeypatch):
     ai_text = "Mocked AI reply for testing."
+    empty_profile_json = (
+        '{"interests":[],"skills":[],"goals":[],"study_habits":[],"personality":[],"preferences":[]}'
+    )
 
     monkeypatch.setattr(chat_service, "build_ai_response", lambda message: ai_text)
+    monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: empty_profile_json)
+    monkeypatch.setattr(
+        chat_service,
+        "generate_session_title",
+        lambda user_message, assistant_message: chat_service.suggest_session_title(user_message),
+    )
     return ai_text
 
 
@@ -244,6 +253,129 @@ def test_rename_session_updates_the_session_title(client, mocked_ai_response):
     sessions_response = client.get("/chat/sessions", headers={"Authorization": f"Bearer {token}"})
     assert sessions_response.status_code == 200
     assert sessions_response.json()[0]["title"] == "Weekly Study Sprint"
+
+
+def _wait_for_session_title(client, token, session_id, predicate, timeout=5.0):
+    start = time.time()
+    while time.time() - start < timeout:
+        sessions_response = client.get("/chat/sessions", headers={"Authorization": f"Bearer {token}"})
+        assert sessions_response.status_code == 200
+        match = next((session for session in sessions_response.json() if session["id"] == session_id), None)
+        if match and predicate(match.get("title")):
+            return match
+        time.sleep(0.1)
+
+    pytest.fail(f"Session {session_id} title did not satisfy predicate within {timeout}s")
+
+
+def test_new_session_uses_placeholder_title(client, mocked_ai_response):
+    create_user(client, 7)
+    token = login_user(client, 7)
+
+    response = client.post(
+        "/chat",
+        json={"message": "What English certificates can I take besides CET-4/6?"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["session"]["title"] == chat_service.DEFAULT_SESSION_TITLE
+
+
+def test_session_title_updates_after_first_reply(client, mocked_ai_response, monkeypatch):
+    create_user(client, 8)
+    token = login_user(client, 8)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(
+        chat_service,
+        "generate_session_title",
+        lambda user_message, assistant_message: "英语水平证明",
+    )
+
+    response = client.post(
+        "/chat",
+        json={"message": "大学除了四六级可以考，还有什么英语水平证明？"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    session_id = response.json()["session"]["id"]
+
+    updated = _wait_for_session_title(
+        client,
+        token,
+        session_id,
+        lambda title: title == "英语水平证明",
+    )
+    assert updated["title"] == "英语水平证明"
+
+
+def test_custom_session_title_not_overwritten(client, mocked_ai_response, monkeypatch):
+    create_user(client, 9)
+    token = login_user(client, 9)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(
+        chat_service,
+        "generate_session_title",
+        lambda user_message, assistant_message: "Should Not Apply",
+    )
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "Help me plan frontend learning.",
+            "title": "前端学习规划",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    session_id = response.json()["session"]["id"]
+    assert response.json()["session"]["title"] == "前端学习规划"
+
+    sessions_response = client.get("/chat/sessions", headers=headers)
+    assert sessions_response.status_code == 200
+    match = next((session for session in sessions_response.json() if session["id"] == session_id), None)
+    assert match is not None
+    assert match["title"] == "前端学习规划"
+
+
+def test_session_title_falls_back_when_llm_fails(client, monkeypatch):
+    create_user(client, 10)
+    token = login_user(client, 10)
+    headers = {"Authorization": f"Bearer {token}"}
+    empty_profile_json = (
+        '{"interests":[],"skills":[],"goals":[],"study_habits":[],"personality":[],"preferences":[]}'
+    )
+
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Mocked AI reply for testing.")
+    monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: empty_profile_json)
+
+    from app.services.ai_service import AIServiceError
+
+    def _raise_title_failure(user_message: str, assistant_message: str):
+        raise AIServiceError("title generation failed")
+
+    monkeypatch.setattr("app.services.chat_service.ai_service.build_session_title_response", _raise_title_failure)
+
+    message = "大学除了四六级可以考，还有什么英语水平证明？我已经大三了"
+    expected_title = chat_service.suggest_session_title(message)
+
+    response = client.post(
+        "/chat",
+        json={"message": message},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    session_id = response.json()["session"]["id"]
+
+    updated = _wait_for_session_title(
+        client,
+        token,
+        session_id,
+        lambda title: title == expected_title,
+    )
+    assert updated["title"] == expected_title
 
 
 def test_extract_response_text_from_responses_api_output():

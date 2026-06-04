@@ -88,6 +88,14 @@ def build_profile_extraction_response(message: str) -> str:
     )
 
 
+def build_portrait_summary_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="portrait summary",
+        message=message,
+        instructions=settings.PORTRAIT_SUMMARY_SYSTEM_PROMPT,
+    )
+
+
 def build_goal_breakdown_response(message: str) -> str:
     return _invoke_ai(
         task_name="goal breakdown",
@@ -101,5 +109,14 @@ def build_action_plan_response(message: str) -> str:
         task_name="action plan",
         message=message,
         instructions=settings.ACTION_PLAN_SYSTEM_PROMPT,
+    )
+
+
+def build_session_title_response(user_message: str, assistant_message: str) -> str:
+    prompt = f"User: {user_message.strip()}\nAssistant: {assistant_message.strip()}"
+    return _invoke_ai(
+        task_name="session title",
+        message=prompt,
+        instructions=settings.SESSION_TITLE_SYSTEM_PROMPT,
     )
 

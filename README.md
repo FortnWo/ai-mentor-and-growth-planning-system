@@ -21,7 +21,7 @@
   - 完整管理员权限，或
   - 有限权限键与可选过期时间。
 - 当前用户身份信息自助 API（`/info/me`）。
-- 用户画像 API（`/profile/me`）。
+- 用户画像 API（`/profile/me`）与特质洞察 API（`/profile/me/insights`）。
 - AI 聊天会话与消息历史。
 - 非阻塞聊天流程：用户消息立即落库，助手回复在后台生成。
 - 通过 WebSocket（`/ws`）推送助手实时更新，并提供轮询兜底。
@@ -40,6 +40,12 @@
 
 ```bash
 mysql -u root -p < database/schema.sql
+```
+
+若数据库在引入画像概要功能之前已创建，请额外执行迁移脚本以添加 `portrait_summary` 列：
+
+```bash
+mysql -u root -p ai_mentor_db < database/migrations/001_add_portrait_summary.sql
 ```
 
 ### 2. 启动后端

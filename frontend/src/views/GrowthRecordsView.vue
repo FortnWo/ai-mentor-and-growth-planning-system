@@ -266,16 +266,6 @@ onMounted(async () => {
 
 <template>
     <div class="page page--wide growth-page">
-        <section class="page-header glass-card panel hero-frame">
-            <div class="title-row">
-                <div>
-                    <p class="page-kicker">成长记录</p>
-                    <h1 class="page-title">记录你的每一次小进步</h1>
-                    <p class="page-subtitle">鼓励温暖的文字，让成长的轨迹更清晰。</p>
-                </div>
-            </div>
-        </section>
-
         <div v-if="listError" class="error-banner" role="alert">
             <p class="feedback feedback--error error-banner__text">{{ listError }}</p>
             <button type="button" class="button button--ghost error-banner__dismiss" @click="clearListError">关闭</button>

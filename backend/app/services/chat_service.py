@@ -13,6 +13,8 @@ import threading
 
 
 ASSISTANT_FAILURE_MESSAGE = "(The assistant failed to respond.)"
+DEFAULT_SESSION_TITLE = "未命名会话"
+_PLACEHOLDER_TITLES = frozenset({DEFAULT_SESSION_TITLE, "New chat"})
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +87,7 @@ def get_or_create_session(
             raise LookupError("Chat session not found for the user")
         return session
 
-    return create_session(db, user_id=user_id, title=title or suggest_session_title("New chat"))
+    return create_session(db, user_id=user_id, title=title or DEFAULT_SESSION_TITLE)
 
 
 def list_sessions_for_user(db: Session, user_id: int) -> list[ChatSession]:
@@ -132,6 +134,63 @@ def rename_session_for_user(db: Session, user_id: int, session_id: int, title: s
     db.commit()
     db.refresh(session)
     return session
+
+
+def is_placeholder_title(title: str | None) -> bool:
+    if title is None:
+        return True
+
+    normalized = title.strip()
+    if not normalized:
+        return True
+
+    return normalized in _PLACEHOLDER_TITLES
+
+
+def _normalize_generated_title(raw: str) -> str:
+    text = raw.strip().strip("\"'")
+    return " ".join(text.split())
+
+
+def generate_session_title(user_message: str, assistant_message: str) -> str:
+    try:
+        raw = ai_service.build_session_title_response(user_message, assistant_message)
+        title = _normalize_generated_title(raw)
+        if not title or len(title) > 24:
+            return suggest_session_title(user_message)
+        return title
+    except (ai_service.AIServiceError, RuntimeError):
+        return suggest_session_title(user_message)
+
+
+def maybe_auto_update_session_title(
+    db: Session,
+    *,
+    session_id: int,
+    assistant_message: ChatMessage,
+) -> str | None:
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session or not is_placeholder_title(session.title):
+        return None
+
+    user_messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.role == MessageRole.USER,
+        )
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        .all()
+    )
+    if len(user_messages) != 1:
+        return None
+
+    title = generate_session_title(user_messages[0].content, assistant_message.content or "")
+    session.title = title
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return title
 
 
 def suggest_session_title(message: str) -> str:
@@ -185,7 +244,7 @@ def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tupl
         db,
         user_id=user_id,
         session_id=payload.session_id,
-        title=payload.title or suggest_session_title(payload.message),
+        title=payload.title or DEFAULT_SESSION_TITLE,
     )
 
     user_message = ChatMessage(
@@ -332,6 +391,22 @@ def process_message_in_background(session_id: int, message: str) -> None:
                 loop.call_soon_threadsafe(asyncio.create_task, manager.send_personal_message(owner_id, payload))
         except Exception:
             pass
+
+        updated_title = maybe_auto_update_session_title(
+            db,
+            session_id=session_id,
+            assistant_message=assistant_message,
+        )
+        if updated_title and owner_id and manager and loop:
+            try:
+                title_payload = {
+                    "type": "session_title_updated",
+                    "session_id": session_id,
+                    "title": updated_title,
+                }
+                loop.call_soon_threadsafe(asyncio.create_task, manager.send_personal_message(owner_id, title_payload))
+            except Exception:
+                pass
 
         if owner_id:
             event_bus.publish(

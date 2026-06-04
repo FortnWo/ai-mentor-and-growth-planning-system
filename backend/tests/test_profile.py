@@ -1,8 +1,19 @@
 import json
 
-from app.services import chat_service
+import pytest
+
+from app.services import ai_service, chat_service
 
 ADMIN_USERNAME = "admin"
+
+
+@pytest.fixture(autouse=True)
+def fast_portrait_summary(monkeypatch):
+    monkeypatch.setattr(
+        ai_service,
+        "build_portrait_summary_response",
+        lambda message: "你正在持续构建个人成长画像。",
+    )
 ADMIN_PASSWORD = "Admin@12345"
 
 
@@ -103,6 +114,7 @@ def test_update_profile_persists_values(client):
 
 
 def test_refresh_profile_from_chat_updates_profile(client, monkeypatch):
+    monkeypatch.setattr(chat_service, "process_message_in_background", lambda session_id, message: None)
     monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Thanks for sharing your context.")
     monkeypatch.setattr(
         chat_service,
@@ -140,7 +152,52 @@ def test_refresh_profile_from_chat_updates_profile(client, monkeypatch):
     assert payload["extracted"]["study_habits"] == ["study every night"]
 
 
+def test_get_profile_insights_returns_traits_and_summary(client, monkeypatch):
+    monkeypatch.setattr(
+        ai_service,
+        "build_portrait_summary_response",
+        lambda message: "你关注 AI 与 Python，目标明确，学习习惯稳定。",
+    )
+
+    student = create_student_user(client, 5)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    update_response = client.put(
+        "/profile/me",
+        json={
+            "interests": ["AI"],
+            "skills": ["Python"],
+            "goals": ["Build portfolio"],
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+
+    insights_response = client.get("/profile/me/insights", headers=headers)
+    assert insights_response.status_code == 200
+
+    data = insights_response.json()
+    assert data["portrait_summary"]
+    assert len(data["traits"]) >= 3
+
+    trait_keys = {trait["trait_key"] for trait in data["traits"]}
+    assert "AI" in trait_keys
+    assert "Python" in trait_keys
+
+    ai_trait = next(trait for trait in data["traits"] if trait["trait_key"] == "AI")
+    assert ai_trait["trait_type"] == "interest"
+    assert ai_trait["source"] == "profile_update"
+    assert ai_trait["confidence"] == 0.8
+
+
+def test_get_profile_insights_requires_auth(client):
+    response = client.get("/profile/me/insights")
+    assert response.status_code == 401
+
+
 def test_refresh_profile_invalid_llm_output_returns_conflict(client, monkeypatch):
+    monkeypatch.setattr(chat_service, "process_message_in_background", lambda session_id, message: None)
     monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Assistant response")
     monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: "not-valid-json")
 

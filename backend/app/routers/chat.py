@@ -32,7 +32,7 @@ def send_message(
             db,
             user_id=current_user.id,
             session_id=payload.session_id,
-            title=payload.title or chat_service.suggest_session_title(payload.message),
+            title=payload.title or chat_service.DEFAULT_SESSION_TITLE,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

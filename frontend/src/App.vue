@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 
 import ThemeToggle from './components/ThemeToggle.vue'
 import { authState, clearAuthSession, isAdmin, loadStoredAuthState, refreshCurrentUser } from './stores/auth'
 
 const router = useRouter()
-const route = useRoute()
 const mobileMenuOpen = ref(false)
 const glowX = ref(0)
 const glowY = ref(0)
@@ -16,66 +15,13 @@ const glowVisible = ref(false)
 const authenticated = computed(() => Boolean(authState.token))
 const admin = computed(() => isAdmin(authState.user))
 const userLabel = computed(() => authState.user?.full_name || authState.user?.username || 'User')
-const workspaceTitle = computed(() => {
-  if (route.path === '/chat') {
-    return '对话工作台'
-  }
-
-  if (route.path === '/growth') {
-    return '成长记录工作台'
-  }
-
-  if (route.path === '/profile') {
-    return '用户画像实验室'
-  }
-
-  if (route.path === '/info') {
-    return '身份信息工作台'
-  }
-
-  if (route.path === '/plan') {
-    return '成长路线图'
-  }
-
-  if (route.path.startsWith('/admin')) {
-    return '管理控制台'
-  }
-
-  return 'AI 导师工作台'
-})
-const workspaceSubtitle = computed(() => {
-  if (route.path === '/chat') {
-    return '整理会话、对照上下文，让对话流保持安静而清晰。'
-  }
-
-  if (route.path === '/growth') {
-    return '记录每一个小进步，回看成长轨迹，让成长痕迹始终可见。'
-  }
-
-  if (route.path === '/profile') {
-    return '通过手动编辑与聊天抽取，持续整理兴趣、技能、习惯和目标。'
-  }
-
-  if (route.path === '/info') {
-    return '查看你的身份概览，让资料保持干净、聚焦、及时更新。'
-  }
-
-  if (route.path === '/plan') {
-    return '面向未来的规划入口，带着更清晰的目标感与成长信号。'
-  }
-
-  if (route.path.startsWith('/admin')) {
-    return '高密度管理界面，让审核与控制更快、更稳。'
-  }
-
-  return '一个具有层次感与动效氛围的玻璃风工作台。'
-})
 const navigationItems = computed(() => {
   if (!authenticated.value) {
     return [{ to: '/login', label: '登录' }]
   }
 
   return [
+
     { to: '/chat', label: '聊天' },
     { to: '/profile', label: '用户画像' },
     { to: '/plan', label: '目标计划' },
@@ -131,7 +77,7 @@ async function logout() {
     <div class="ambient-orb"></div>
 
     <header class="app-header glass-card">
-      <RouterLink class="brand" to="/chat" @click="closeMobileMenu">
+      <RouterLink class="brand" to="/home" @click="closeMobileMenu">
         <span class="brand-mark">
           AI
         </span>
@@ -198,60 +144,6 @@ async function logout() {
     </transition>
 
     <main class="app-main">
-      <section v-if="authenticated" class="hero-frame glass-card panel app-hero reveal">
-        <div class="app-hero__copy">
-          <p class="page-kicker">{{ workspaceTitle }}</p>
-          <h1 class="page-title">{{ workspaceSubtitle }}</h1>
-          <p class="page-subtitle">
-            {{
-              admin
-                ? 'Administrative access enabled. The control surface is tuned for speed and clarity.'
-                : 'Your workspace is ready. Move between mentoring, profile, and planning with a stronger visual rhythm.'
-            }}
-          </p>
-
-          <div class="hero-actions">
-            <RouterLink class="button button--primary" to="/chat">打开聊天</RouterLink>
-            <RouterLink class="button button--ghost" to="/plan">查看计划</RouterLink>
-            <RouterLink class="button button--ghost" to="/growth">Growth Records</RouterLink>
-          </div>
-        </div>
-
-        <div class="hero-visual">
-          <div class="hero-visual__stage">
-            <div class="hero-visual__ring">
-              <div class="hero-visual__core"></div>
-            </div>
-          </div>
-
-          <div class="hero-floating">
-            <article class="hero-floating__card">
-              <p class="hero-floating__label">工作区</p>
-              <p class="hero-floating__value">在线</p>
-              <p class="hero-floating__trend">带有动效层次的动态布局</p>
-            </article>
-
-            <article class="hero-floating__card">
-              <p class="hero-floating__label">角色</p>
-              <p class="hero-floating__value">{{ admin ? '管理员' : '学生' }}</p>
-              <p class="hero-floating__trend">{{ admin ? '管理权限与用户' : '与 AI 一起规划和聊天' }}</p>
-            </article>
-
-            <article class="hero-floating__card">
-              <p class="hero-floating__label">状态</p>
-              <p class="hero-floating__value">已同步</p>
-              <p class="hero-floating__trend">CORS 与接口路由已连接</p>
-            </article>
-
-            <article class="hero-floating__card">
-              <p class="hero-floating__label">动效</p>
-              <p class="hero-floating__value">开启</p>
-              <p class="hero-floating__trend">光晕、漂移与渐显动画</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
       <RouterView />
     </main>
   </div>

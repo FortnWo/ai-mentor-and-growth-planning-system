@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS user_profile (
     personality TEXT NULL,
     preferences TEXT NULL,
     last_extracted_at DATETIME NULL,
+    portrait_summary TEXT NULL,
+    portrait_summary_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,

@@ -30,6 +30,8 @@ class UserProfile(Base):
     _preferences_json = Column("preferences", Text, nullable=True)
 
     last_extracted_at = Column(DateTime, nullable=True)
+    portrait_summary = Column(Text, nullable=True)
+    portrait_summary_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

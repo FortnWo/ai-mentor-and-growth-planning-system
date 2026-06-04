@@ -120,46 +120,6 @@ onMounted(async () => {
 
 <template>
   <div class="page page--wide info-page">
-    <section class="page-header glass-card panel hero-frame reveal">
-      <div class="title-row">
-        <div>
-          <p class="page-kicker">个人工作区</p>
-          <h1 class="page-title">我的资料</h1>
-          <p class="page-subtitle">
-            在精致的资料工作区中整理你的学业信息、简介和账号凭据。
-          </p>
-        </div>
-      </div>
-
-      <div v-if="userInfo" class="stat-grid">
-        <article class="stat-card">
-          <p class="stat-label">用户名</p>
-          <p class="stat-value">{{ userInfo.username }}</p>
-          <p class="stat-note">主要登录标识</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">角色</p>
-          <p class="stat-value">{{ userInfo.role }}</p>
-          <p class="stat-note">{{ userInfo.is_active ? '启用账号' : '禁用账号' }}</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">邮箱</p>
-          <p class="stat-value">{{ userInfo.email }}</p>
-          <p class="stat-note">通知渠道</p>
-        </article>
-
-        <article class="stat-card">
-          <p class="stat-label">最近登录</p>
-          <p class="stat-value">{{ userInfo.last_login_at ? '近期' : '从未' }}</p>
-          <p class="stat-note">
-            {{ userInfo.last_login_at ? new Date(userInfo.last_login_at).toLocaleString() : '暂无登录记录' }}
-          </p>
-        </article>
-      </div>
-    </section>
-
     <p v-if="error" class="feedback feedback--error">{{ error }}</p>
     <p v-if="feedback" class="feedback feedback--success">{{ feedback }}</p>
 
