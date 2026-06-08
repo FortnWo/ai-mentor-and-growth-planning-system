@@ -40,8 +40,9 @@ B/E 等领域事件 ──────►（未来反哺修正画像）     ▲
 
 ### 扩展（相对现状）
 
-5. **拓宽信号来源** — 除聊天外，接收 B（计划执行）、E（成长记录）等领域事件，用于修正/补强画像（如拖延模式、反复卡点），不替代 B/E 在 UKL 中的原始切片
+5. **拓宽信号来源** — 除聊天外，接收 B（`execution_feedback`）、E（`growth_pattern`）等 UKL 切片，用于修正/补强画像；**E 的 `growth_pattern` 为非聊天主要信号来源之一**（见 [module-e-growth-feedback.md](./module-e-growth-feedback.md)）
 6. **trait 演进策略** — 在 `merge_unique` 之上，逐步引入置信度、时间衰减、冲突标记
+7. **批量补强，非逐条** — 打卡记录远多于手写时：单条打卡 **不** 触发 D 更新；达阈值后汇总打卡 pattern + 同期手写，再更新 traits
 
 ### 明确不做
 
@@ -69,7 +70,7 @@ D 更新画像后：先完成生产 → 将 snapshot 作为 profile 切片的一
 | `portrait_summary`（`user_profile` 表） | 过渡期可保留；长期以 UKL 为对外权威源 |
 | `get_profile_insights_for_user` | 前端展示可走 UKL；或 D 代理调用 UKL |
 | `action_plan_service` 等直接读 profile | 逐步改为经 UKL `assemble_context(scene=plan)` |
-| `event_bus` + `growth_cycle_orchestrator` | D 订阅相关事件作画像补强；UKL 并行 ingest 原始切片 |
+| `event_bus` + `growth_cycle_orchestrator` | D 订阅 `growth_pattern` 批量更新（E 产）；B `execution_feedback` 作规划向信号；UKL 并行 ingest |
 
 ## 六、D → UKL 接口（概念层）
 

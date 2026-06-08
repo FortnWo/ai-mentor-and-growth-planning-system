@@ -348,7 +348,7 @@ def test_session_title_falls_back_when_llm_fails(client, monkeypatch):
         '{"interests":[],"skills":[],"goals":[],"study_habits":[],"personality":[],"preferences":[]}'
     )
 
-    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Mocked AI reply for testing.")
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message, **_: "Mocked AI reply for testing.")
     monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: empty_profile_json)
 
     from app.services.ai_service import AIServiceError
@@ -415,7 +415,7 @@ def test_send_message_succeeds_when_profile_extraction_fails(client, monkeypatch
     token = login_user(client, 41)
     headers = {"Authorization": f"Bearer {token}"}
 
-    monkeypatch.setattr(chat_service, "build_ai_response", lambda message: "Chat still succeeds")
+    monkeypatch.setattr(chat_service, "build_ai_response", lambda message, **_: "Chat still succeeds")
 
     def _raise_extraction_failure(message: str):
         raise RuntimeError("profile extraction failed")

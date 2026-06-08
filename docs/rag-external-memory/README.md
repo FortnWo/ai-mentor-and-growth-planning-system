@@ -8,8 +8,8 @@
 | A 聊天问答 | [module-a-chat.md](./module-a-chat.md) | 已定稿 |
 | B 行动计划 | [module-b-action-plan.md](./module-b-action-plan.md) | 已定稿 |
 | C 目标拆解 | [module-c-goal-breakdown.md](./module-c-goal-breakdown.md) | 已定稿 |
-| E 成长反馈 | module-e-growth-feedback.md | 待讨论 |
-| 跨板块统一架构（UKL） | cross-arch-ukl.md | 待五板块完成后讨论 |
+| E 成长反馈 | [module-e-growth-feedback.md](./module-e-growth-feedback.md) | 已定稿 |
+| 跨板块统一架构（UKL） | [cross-arch-ukl.md](./cross-arch-ukl.md) | 初稿（五板块汇总） |
 
 ## 总体原则
 

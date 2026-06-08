@@ -107,43 +107,101 @@ def _log_usage(model: str, task: str, response: Any, user_id: int | None = None)
         )
 
 
-def _invoke_ai(*, task_name: str, message: str, instructions: str | None = None, user_id: int | None = None) -> str:
+def _invoke_ai(
+    *,
+    task_name: str,
+    message: str,
+    instructions: str | None = None,
+    db=None,
+    user_id: int | None = None,
+) -> str:
+    rate_limit_user = None
+    rate_db = db
+    owned_rate_db = False
     try:
-        client = _get_ai_client()
-        model = _get_model()
-        response = client.responses.create(
-            model=model,
-            instructions=instructions,
-            input=message.strip(),
-        )
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise AIServiceError(f"AI {task_name} request failed: {exc}") from exc
+        if task_name == "chat" and user_id is not None:
+            if rate_db is None:
+                from app.core.database import SessionLocal
 
-    _log_usage(model, task_name, response, user_id=user_id)
-    return extract_response_text(response)
+                rate_db = SessionLocal()
+                owned_rate_db = True
+            from app.models.user import User
+            from app.services.ai_rate_limit_service import assert_chat_allowed
+
+            rate_limit_user = rate_db.query(User).filter(User.id == user_id).first()
+            if rate_limit_user is not None:
+                assert_chat_allowed(rate_db, rate_limit_user)
+
+        try:
+            client = _get_ai_client()
+            model = _get_model()
+            response = client.responses.create(
+                model=model,
+                instructions=instructions,
+                input=message.strip(),
+            )
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise AIServiceError(f"AI {task_name} request failed: {exc}") from exc
+
+        _log_usage(model, task_name, response, user_id=user_id)
+
+        if task_name == "chat" and rate_limit_user is not None and rate_db is not None:
+            from app.services.ai_rate_limit_service import sync_user_risk_flag
+
+            sync_user_risk_flag(rate_db, rate_limit_user)
+
+        return extract_response_text(response)
+    finally:
+        if owned_rate_db and rate_db is not None:
+            rate_db.close()
+
+
+def build_session_summary_response(
+    prior_summary: str | None,
+    new_dialogue: str,
+    *,
+    db=None,
+    user_id: int | None = None,
+) -> str:
+    prior = (prior_summary or "").strip()
+    dialogue = (new_dialogue or "").strip()
+    if not dialogue:
+        return prior
+
+    if prior:
+        message = f"已有摘要：\n{prior}\n\n新增对话：\n{dialogue}"
+    else:
+        message = f"新增对话：\n{dialogue}"
+
+    return _invoke_ai(
+        task_name="session_summary",
+        message=message,
+        instructions=settings.CHAT_SESSION_SUMMARY_SYSTEM_PROMPT,
+        db=db,
+        user_id=user_id,
+    )
 
 
 def build_chat_response(
     message: str,
     *,
     instructions: str | None = None,
+    db=None,
     user_id: int | None = None,
 ) -> str:
+    if instructions is None:
+        from app.services.system_config_service import resolve_llm_system_prompt
+
+        instructions = resolve_llm_system_prompt(db)
     return _invoke_ai(
         task_name="chat",
         message=message,
-        instructions=instructions if instructions is not None else (settings.LLM_SYSTEM_PROMPT or None),
+        instructions=instructions,
+        db=db,
         user_id=user_id,
     )
-
-
-_ADMIN_DEFAULT_SYSTEM_PROMPT = (
-    "你是一个专业全能的系统管理助手。"
-    "你可以通过工具查询系统数据库、获取日志和统计信息，用自然语言为管理员提供精准答复。"
-    "回答要简洁专业，数据准确。禁止执行任何写操作或 DDL 语句。"
-)
 
 
 def build_admin_chat_response(message: str, db=None, *, user_id: int | None = None) -> str:
@@ -154,8 +212,9 @@ def build_admin_chat_response(message: str, db=None, *, user_id: int | None = No
     user_id: session owner for ai_usage_logs attribution.
     """
     from app.services.admin_tool_service import ADMIN_TOOLS, execute_tool
+    from app.services.system_config_service import resolve_admin_llm_system_prompt
 
-    admin_prompt = getattr(settings, "ADMIN_LLM_SYSTEM_PROMPT", None) or _ADMIN_DEFAULT_SYSTEM_PROMPT
+    admin_prompt = resolve_admin_llm_system_prompt(db)
 
     try:
         client = _get_ai_client()

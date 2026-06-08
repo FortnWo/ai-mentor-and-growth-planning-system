@@ -119,7 +119,9 @@ item 状态变更（含完成回写成长记录）时：
 
 ```text
 1. 重算受影响的直接子节点状态
-2. 执行现有 plan + main 聚合（_sync_aggregate_plan_and_main_status）
+2. 若子节点 newly completed → 写 milestone growth_record + UKL milestone_achievement（见 E 方案）
+3. 执行现有 plan + main 聚合（_sync_aggregate_plan_and_main_status）
+4. 若 main newly completed → 同上 milestone 路径 + 可选即时微反馈
 ```
 
 ### 与 UKL
@@ -171,7 +173,7 @@ item 状态变更（含完成回写成长记录）时：
 | `_build_action_plan_prompt_for_main` | UKL assemble + 实体（main + secondary） |
 | `_sync_aggregate_plan_and_main_status` | 保留；前增加子节点软聚合 |
 | `profile_service.get_profile_for_user` 直拼 | 改为 UKL profile 切片 |
-| item 完成 → growth_record | 保留；增加子节点状态重算 |
+| item 完成 → growth_record | 保留；增加子节点状态重算；子/主里程碑 → E milestone + 即时微反馈 |
 
 ## 十一、明确不做（另案）
 

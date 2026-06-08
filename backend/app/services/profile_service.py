@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
 import json
+import logging
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.models.profile import UserProfile
 from app.models.user_trait import UserTrait
@@ -119,7 +122,20 @@ def refresh_portrait_summary_for_user(db: Session, user_id: int) -> UserProfile:
     profile.portrait_summary_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     db.refresh(profile)
+    _maybe_sync_profile_to_ukl(db, user_id)
     return profile
+
+
+def _maybe_sync_profile_to_ukl(db: Session, user_id: int) -> None:
+    if not settings.UKL_ENABLED:
+        return
+    try:
+        from app.services import ukl_service
+
+        ukl_service.ingest_profile_from_user(db, user_id)
+        db.commit()
+    except Exception:
+        logger.exception("UKL profile ingest failed user_id=%s", user_id)
 
 
 def _llm_summary_enabled() -> bool:

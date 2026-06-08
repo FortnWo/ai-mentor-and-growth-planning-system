@@ -7,6 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ["UKL_ENABLED"] = "false"
+os.environ["CHAT_SESSION_SUMMARY_ENABLED"] = "false"
 os.environ.setdefault("AUTH_SECRET_KEY", "test-secret-key-test-secret-key-test-secret-key")
 os.environ.setdefault("AUTH_ALGORITHM", "HS256")
 os.environ.setdefault("AUTH_ACCESS_TOKEN_EXPIRES_MINUTES", "120")
@@ -18,6 +20,9 @@ os.environ.setdefault("BOOTSTRAP_ADMIN_FULL_NAME", "System Administrator")
 from app.core.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import ChatMessage, ChatSession, User  # noqa: F401, E402
+from app.models.system_config import AIUsageLog, SystemConfig  # noqa: F401, E402
+from app.models.ukl_slice import UklSlice  # noqa: F401, E402
+from app.models.chat_session_summary import ChatSessionSummary  # noqa: F401, E402
 import app.core.database as database_module  # noqa: E402
 import app.core.bootstrap as bootstrap_module  # noqa: E402
 import app.main as app_module  # noqa: E402

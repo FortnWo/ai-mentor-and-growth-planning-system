@@ -132,7 +132,7 @@ def test_process_message_in_background_logs_owner_user_id(client, monkeypatch, d
 
     captured: dict[str, int | None] = {}
 
-    def fake_build_ai_response(message, *, instructions=None, user_id=None):
+    def fake_build_ai_response(message, *, instructions=None, db=None, user_id=None):
         captured["user_id"] = user_id
         ai_service._log_usage(
             "gpt-test",

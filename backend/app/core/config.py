@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     LLM_API_KEY: str | None = None
     LLM_API_BASE_URL: str | None = None
     LLM_MODEL: str | None = None
-    LLM_SYSTEM_PROMPT: str | None = None
+    LLM_SYSTEM_PROMPT: str = (
+        "你是一位支持型大学 AI 导师，耐心倾听学生的困惑与目标，"
+        "用清晰、鼓励的语气给出可执行的建议，避免空泛说教。"
+    )
     PROFILE_EXTRACTION_ENABLED: bool = True
     PROFILE_EXTRACTION_MESSAGE_WINDOW: int = 14
     PROFILE_EXTRACTION_SYSTEM_PROMPT: str = (
@@ -61,9 +64,23 @@ class Settings(BaseSettings):
         "Given the first user message and assistant reply, output a concise Chinese title (4-16 characters). "
         "Return only the title text: no quotes, punctuation, markdown, or explanation."
     )
-    ADMIN_LLM_SYSTEM_PROMPT: str | None = None
+    ADMIN_LLM_SYSTEM_PROMPT: str = (
+        "你是一个专业全能的系统管理助手。"
+        "你可以通过工具查询系统数据库、获取日志和统计信息，用自然语言为管理员提供精准答复。"
+        "回答要简洁专业，数据准确。禁止执行任何写操作或 DDL 语句。"
+    )
     APP_SECRET_KEY: str = "ai-mentor-default-secret-change-in-production"
     RUN_LIVE_AI_TESTS: bool = False
+
+    # UKL (user knowledge layer); UKL0: profile dual-write; UKL1: chat attention packaging when enabled
+    UKL_ENABLED: bool = False
+    CHAT_WORK_MEMORY_MAX_MESSAGES: int = 12
+    CHAT_SUMMARY_USE_THRESHOLD: int = 16
+    CHAT_SESSION_SUMMARY_ENABLED: bool = True
+    CHAT_SESSION_SUMMARY_SYSTEM_PROMPT: str = (
+        "你是对话摘要助手。根据已有摘要与新增对话，输出更新后的中文会话摘要（第二人称，150-400字）。"
+        "保留关键事实、目标、情绪与未决事项；不要编造；不要输出 markdown 或标题。"
+    )
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
     AUTH_ALGORITHM: str = "HS256"

@@ -6,7 +6,7 @@ from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.schemas.chat import ChatMessageRead, ChatSendRequest, MessageDeliveryStatus
-from app.services import ai_service, profile_service
+from app.services import ai_service, chat_context_service, profile_service
 
 import asyncio
 import threading
@@ -213,8 +213,19 @@ def suggest_session_title(message: str) -> str:
     return f"{first_sentence[:24].rstrip()}..."
 
 
-def build_ai_response(message: str, *, instructions: str | None = None, user_id: int | None = None) -> str:
-    return ai_service.build_chat_response(message, instructions=instructions, user_id=user_id)
+def build_ai_response(
+    message: str,
+    *,
+    instructions: str | None = None,
+    db: Session | None = None,
+    user_id: int | None = None,
+) -> str:
+    return ai_service.build_chat_response(
+        message,
+        instructions=instructions,
+        db=db,
+        user_id=user_id,
+    )
 
 
 def build_profile_extraction_response(message: str) -> str:
@@ -252,7 +263,7 @@ def send_message(db: Session, payload: ChatSendRequest, *, user_id: int) -> tupl
         role=MessageRole.USER,
         content=payload.message.strip(),
     )
-    assistant_content = build_ai_response(payload.message, user_id=user_id)
+    assistant_content = build_ai_response(payload.message, db=db, user_id=user_id)
     assistant_message = ChatMessage(
         session_id=session.id,
         role=MessageRole.ASSISTANT,
@@ -288,29 +299,8 @@ def process_message_in_background(session_id: int, message: str) -> None:
 
     db = database_module.SessionLocal()
     try:
-        # Build prompt using recent session history (if possible)
-        try:
-            history_msgs = (
-                db.query(ChatMessage)
-                .filter(ChatMessage.session_id == session_id)
-                .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
-                .all()
-            )
-            parts: list[str] = []
-            for m in history_msgs:
-                role = _role_to_value(m.role)
-                if role == MessageRole.USER.value:
-                    parts.append(f"User: {m.content}")
-                else:
-                    # Skip unresolved placeholder assistant rows from context.
-                    status = infer_message_status(role, m.content or "")
-                    if status == MessageDeliveryStatus.PENDING:
-                        continue
-                    parts.append(f"Assistant: {m.content}")
-            parts.append(f"User: {message.strip()}")
-            prompt = "\n".join(parts)
-        except Exception:
-            prompt = message.strip()
+        session_obj = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        owner_id = session_obj.user_id if session_obj else None
 
         # create a placeholder assistant message so clients can show typing/placeholder
         assistant_message = ChatMessage(
@@ -321,10 +311,6 @@ def process_message_in_background(session_id: int, message: str) -> None:
         db.add(assistant_message)
         db.commit()
         db.refresh(assistant_message)
-
-        # fetch session owner to know which user to notify
-        session_obj = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        owner_id = session_obj.user_id if session_obj else None
 
         manager = ws_module.manager
         loop = getattr(manager, "loop", None)
@@ -366,12 +352,30 @@ def process_message_in_background(session_id: int, message: str) -> None:
                 is_admin_session = bool(owner_user and owner_user.role == UserRole.ADMIN)
 
             if is_admin_session:
+                prompt = chat_context_service.build_legacy_chat_context(
+                    db,
+                    session_id=session_id,
+                    current_user_message=message.strip(),
+                )
                 from app.services.ai_service import build_admin_chat_response
                 assistant_content = build_admin_chat_response(prompt, db=db, user_id=owner_id)
+            elif owner_id is not None:
+                prompt = chat_context_service.build_chat_context(
+                    db,
+                    user_id=owner_id,
+                    session_id=session_id,
+                    current_user_message=message.strip(),
+                )
+                assistant_content = build_ai_response(prompt, db=db, user_id=owner_id)
             else:
-                assistant_content = build_ai_response(prompt, user_id=owner_id)
-        except Exception:
-            assistant_content = ASSISTANT_FAILURE_MESSAGE
+                assistant_content = build_ai_response(message.strip(), db=db, user_id=owner_id)
+        except Exception as exc:
+            from app.services.ai_rate_limit_service import AIRateLimitExceeded
+
+            if isinstance(exc, AIRateLimitExceeded):
+                assistant_content = str(exc)
+            else:
+                assistant_content = ASSISTANT_FAILURE_MESSAGE
 
         # stop heartbeat
         try:
@@ -420,6 +424,7 @@ def process_message_in_background(session_id: int, message: str) -> None:
                 pass
 
         if owner_id:
+            chat_context_service.schedule_session_summary_update(session_id, owner_id)
             event_bus.publish(
                 event_name=DomainEventName.ON_CHAT_MESSAGE.value,
                 user_id=owner_id,

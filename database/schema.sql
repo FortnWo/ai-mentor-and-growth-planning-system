@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
     phone VARCHAR(20) NULL COMMENT '手机号码',
     address VARCHAR(500) NULL COMMENT '地址',
     enrollment_year SMALLINT UNSIGNED NULL COMMENT '入学年份，用于运行时计算年级',
+    risk_flag TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '风险标记：0正常 1预警 2限速',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_users_email (email),
@@ -261,5 +262,87 @@ CREATE TABLE IF NOT EXISTS domain_events (
     INDEX idx_domain_events_event_name (event_name),
     INDEX idx_domain_events_user_id (user_id),
     INDEX idx_domain_events_occurred_at (occurred_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- verification_codes (password reset / verification)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS verification_codes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    type ENUM('phone', 'email') NOT NULL COMMENT '验证码类型：手机或邮箱',
+    code VARCHAR(16) NOT NULL COMMENT '验证码',
+    expires_at DATETIME NOT NULL COMMENT '过期时间',
+    used_at DATETIME NULL COMMENT '使用时间（NULL 表示未使用）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_verification_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_vc_user_id (user_id),
+    INDEX idx_vc_type_created (type, created_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- system_config (encrypted KV store)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_config (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `key` VARCHAR(128) NOT NULL UNIQUE COMMENT '配置键',
+    `value` TEXT NULL COMMENT '配置值（敏感字段为 Fernet 密文）',
+    is_encrypted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否加密存储',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_system_config_key (`key`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- ai_usage_logs (LLM token usage tracking)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL COMMENT '调用用户（NULL 表示系统调用）',
+    model VARCHAR(128) NOT NULL,
+    prompt_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+    completion_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+    task VARCHAR(64) NULL COMMENT '调用场景（chat / profile / goal / etc.）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_usage_user_id (user_id),
+    INDEX idx_usage_created (created_at),
+    INDEX idx_usage_model (model)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- ukl_slice (user knowledge layer projections)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ukl_slice (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    slice_type VARCHAR(64) NOT NULL,
+    source_module VARCHAR(64) NOT NULL,
+    ref_type VARCHAR(32) NULL,
+    ref_id INT UNSIGNED NULL,
+    payload TEXT NOT NULL,
+    version INT UNSIGNED NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_ukl_slice_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_ukl_slice_identity (user_id, slice_type, ref_type, ref_id),
+    INDEX idx_ukl_slice_user_type (user_id, slice_type),
+    INDEX idx_ukl_slice_ref (ref_type, ref_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- chat_session_summary (UKL1 session rolling narrative)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS chat_session_summary (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    session_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    summary TEXT NOT NULL,
+    summarized_through_message_id INT UNSIGNED NULL,
+    message_count INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_chat_session_summary_session FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_session_summary_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_chat_session_summary_session (session_id),
+    INDEX idx_chat_session_summary_user (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 

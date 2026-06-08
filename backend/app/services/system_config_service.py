@@ -134,6 +134,35 @@ def get_ai_config(db: Session | None = None) -> dict:
         }
 
 
+def _resolve_prompt(db: Session | None, db_key: str, settings_attr: str) -> str:
+    """Resolve a system prompt: DB override (admin panel) > settings (.env / config default)."""
+    from sqlalchemy import inspect
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.config import settings
+
+    try:
+        with _db_ctx(db) as session:
+            if session.bind is not None and "system_config" not in inspect(session.bind).get_table_names():
+                return getattr(settings, settings_attr).strip()
+            db_value = get(session, db_key)
+            if db_value and db_value.strip():
+                return db_value.strip()
+    except SQLAlchemyError:
+        logger.debug("prompt resolve: falling back to settings for %s", db_key, exc_info=True)
+    return getattr(settings, settings_attr).strip()
+
+
+def resolve_llm_system_prompt(db: Session | None = None) -> str:
+    """Effective user-facing mentor chat system prompt."""
+    return _resolve_prompt(db, "llm_system_prompt", "LLM_SYSTEM_PROMPT")
+
+
+def resolve_admin_llm_system_prompt(db: Session | None = None) -> str:
+    """Effective admin assistant chat system prompt."""
+    return _resolve_prompt(db, "admin_llm_system_prompt", "ADMIN_LLM_SYSTEM_PROMPT")
+
+
 def _load_llm_presets_raw(db: Session) -> list[dict[str, Any]]:
     raw = get(db, _LLM_PRESETS_KEY)
     if not raw:

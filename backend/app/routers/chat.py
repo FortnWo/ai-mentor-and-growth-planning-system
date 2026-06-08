@@ -15,6 +15,7 @@ from app.schemas.chat import (
     ChatSessionRenameRequest,
 )
 from app.services import chat_service
+from app.services.ai_rate_limit_service import AIRateLimitExceeded, assert_chat_allowed
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 error_logger = logging.getLogger("ai_mentor.errors")
@@ -36,6 +37,14 @@ def send_message(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        assert_chat_allowed(db, current_user)
+    except AIRateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
 
     # persist user message immediately
     user_message = chat_service.create_user_message(db, session=session, message=payload.message)

@@ -1,8 +1,11 @@
--- AI Mentor & Growth Planning System (Test DB)
+-- AI Mentor & Growth Planning System
 -- Stage 3: Unified Data Model + Event-Driven Persistence
 CREATE DATABASE IF NOT EXISTS ai_mentor_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE ai_mentor_test;
 
+-- -------------------------------------------------------
+-- users
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -18,11 +21,19 @@ CREATE TABLE IF NOT EXISTS users (
     major VARCHAR(255) NULL,
     year_of_study TINYINT UNSIGNED NULL,
     bio TEXT NULL,
+    phone VARCHAR(20) NULL COMMENT '手机号码',
+    address VARCHAR(500) NULL COMMENT '地址',
+    enrollment_year SMALLINT UNSIGNED NULL COMMENT '入学年份，用于运行时计算年级',
+    risk_flag TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '风险标记：0正常 1预警 2限速',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_users_email (email)
+    INDEX idx_users_email (email),
+    INDEX idx_users_enrollment_year (enrollment_year)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- chat_sessions (conversation entry)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -32,6 +43,9 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     INDEX idx_chat_sessions_user (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- chat_messages (conversation stream)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chat_messages (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     session_id INT UNSIGNED NOT NULL,
@@ -42,7 +56,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     INDEX idx_chat_messages_session (session_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
--- user_profile (用户画像)
+-- -------------------------------------------------------
+-- user_profile (用户画像：兴趣、技能、目标等)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_profile (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL UNIQUE,
@@ -61,6 +77,9 @@ CREATE TABLE IF NOT EXISTS user_profile (
     INDEX idx_user_profile_user (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- user_traits (quantified signals)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_traits (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -80,6 +99,9 @@ CREATE TABLE IF NOT EXISTS user_traits (
     INDEX idx_user_traits_key (trait_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- user_goals (canonical goal set)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS user_goals (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -95,6 +117,9 @@ CREATE TABLE IF NOT EXISTS user_goals (
     INDEX idx_user_goals_status (status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- goal_breakdowns (goal tree)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS goal_breakdowns (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     goal_id INT UNSIGNED NOT NULL,
@@ -103,7 +128,7 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
     description TEXT NULL,
     level TINYINT UNSIGNED NOT NULL DEFAULT 0,
     sequence SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-    status ENUM('pending', 'in_progress', 'completed') NOT NULL DEFAULT 'pending',
+    status ENUM('pending', 'in_progress', 'completed', 'failed') NOT NULL DEFAULT 'pending',
     due_date DATE NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -114,9 +139,13 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
     INDEX idx_goal_breakdowns_level (level)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- goal_actions (plan header)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS goal_actions (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    goal_id INT UNSIGNED NOT NULL UNIQUE,
+    goal_id INT UNSIGNED NOT NULL,
+    main_breakdown_id INT UNSIGNED NOT NULL,
     title VARCHAR(255) NOT NULL,
     summary TEXT NULL,
     status ENUM('pending', 'in_progress', 'completed', 'archived', 'failed') NOT NULL DEFAULT 'pending',
@@ -124,10 +153,16 @@ CREATE TABLE IF NOT EXISTS goal_actions (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_goal_actions_goal FOREIGN KEY (goal_id) REFERENCES user_goals (id) ON DELETE CASCADE,
+    CONSTRAINT fk_goal_actions_main_breakdown FOREIGN KEY (main_breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
+    CONSTRAINT uq_action_plan_goal_main_breakdown UNIQUE (goal_id, main_breakdown_id),
     INDEX idx_goal_actions_goal (goal_id),
+    INDEX idx_goal_actions_main_breakdown (main_breakdown_id),
     INDEX idx_goal_actions_status (status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- goal_action_items (action execution items)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS goal_action_items (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     plan_id INT UNSIGNED NOT NULL,
@@ -150,6 +185,9 @@ CREATE TABLE IF NOT EXISTS goal_action_items (
     INDEX idx_goal_action_items_sequence (sequence)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- growth_records (growth timeline)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS growth_records (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -176,6 +214,9 @@ CREATE TABLE IF NOT EXISTS growth_records (
     INDEX idx_growth_records_idempotency_key (idempotency_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- growth_daily_aggregates (analytics)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS growth_daily_aggregates (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -191,6 +232,9 @@ CREATE TABLE IF NOT EXISTS growth_daily_aggregates (
     INDEX idx_growth_daily_aggregates_record_date (record_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- growth_summaries (analytics)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS growth_summaries (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -203,6 +247,9 @@ CREATE TABLE IF NOT EXISTS growth_summaries (
     INDEX idx_growth_summaries_date_range (start_date, end_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- domain_events (event sourcing / traceability)
+-- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS domain_events (
     event_id CHAR(36) PRIMARY KEY,
     trace_id CHAR(36) NOT NULL,
@@ -215,5 +262,49 @@ CREATE TABLE IF NOT EXISTS domain_events (
     INDEX idx_domain_events_event_name (event_name),
     INDEX idx_domain_events_user_id (user_id),
     INDEX idx_domain_events_occurred_at (occurred_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- verification_codes (password reset / verification)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS verification_codes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    type ENUM('phone', 'email') NOT NULL COMMENT '验证码类型：手机或邮箱',
+    code VARCHAR(16) NOT NULL COMMENT '验证码',
+    expires_at DATETIME NOT NULL COMMENT '过期时间',
+    used_at DATETIME NULL COMMENT '使用时间（NULL 表示未使用）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_verification_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_vc_user_id (user_id),
+    INDEX idx_vc_type_created (type, created_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- system_config (encrypted KV store)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_config (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `key` VARCHAR(128) NOT NULL UNIQUE COMMENT '配置键',
+    `value` TEXT NULL COMMENT '配置值（敏感字段为 Fernet 密文）',
+    is_encrypted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否加密存储',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_system_config_key (`key`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- ai_usage_logs (LLM token usage tracking)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL COMMENT '调用用户（NULL 表示系统调用）',
+    model VARCHAR(128) NOT NULL,
+    prompt_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+    completion_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+    task VARCHAR(64) NULL COMMENT '调用场景（chat / profile / goal / etc.）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_usage_user_id (user_id),
+    INDEX idx_usage_created (created_at),
+    INDEX idx_usage_model (model)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 

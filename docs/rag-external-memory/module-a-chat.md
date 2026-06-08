@@ -61,7 +61,7 @@
 | **UKL `assemble_context(scene=chat)`** | D 的 profile snapshot + 其他切片 | 跨 session「一直懂你是谁」 |
 | **工作记忆** | 当前 session 最近 K 轮 | 维持对话连贯 |
 | **Session 滚动摘要** | 本 session 消息异步压缩 | session 变长时替代早期逐字历史，控 token |
-| **长期叙事记忆** | UKL `slice_type=episodic_narrative` | 阶段状态与情绪脉络，提升回复质感 |
+| **长期叙事记忆** | UKL `slice_type=episodic_narrative`；E 的 `weekly_narrative` / `growth_pattern` | 阶段状态与情绪脉络，提升回复质感 |
 
 **A1 不依赖向量**，已能解决：新 session 失忆、session 内 token 暴增、人格不连续。
 
@@ -130,7 +130,7 @@ A 阶段聚焦用户私域注意力；公共 RAG 不阻塞 A1–A2。
 | `process_message_in_background` 全量 session 历史拼接 | 改为注意力打包器 `build_chat_context()` |
 | `build_ai_response(message)` | 接收组装后的 context 包，非裸消息 |
 | D / UKL | Tier 1 每轮 `assemble_context(scene=chat)` |
-| D 画像抽取 | 并行；A 负责 episodic 叙事，D 负责 profile traits |
+| D 画像抽取 | 并行；A 负责 episodic 叙事，D 负责 profile traits；E `growth_pattern` 经 UKL 供 A Tier1 可选引用 |
 | `event_bus` ON_CHAT_MESSAGE | 触发异步摘要更新与固化 pipeline |
 
 ## 十、风险与取舍

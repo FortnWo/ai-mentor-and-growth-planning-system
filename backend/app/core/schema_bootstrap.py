@@ -60,16 +60,16 @@ def ensure_database_schema(engine: Engine) -> None:
                 )
 
     if "verification_codes" not in table_names:
-        logger.info("Applying migration 003_add_verification_codes.sql")
-        _run_sql_file(engine, "003_add_verification_codes.sql")
+        logger.info("Applying migration 005_add_verification_codes.sql")
+        _run_sql_file(engine, "005_add_verification_codes.sql")
 
     if "system_config" not in table_names or "ai_usage_logs" not in table_names:
-        logger.info("Applying migration 004_add_system_config.sql")
-        _run_sql_file(engine, "004_add_system_config.sql")
+        logger.info("Applying migration 006_add_system_config.sql")
+        _run_sql_file(engine, "006_add_system_config.sql")
     elif "users" in table_names:
         user_cols = {c["name"] for c in insp.get_columns("users")}
         if "risk_flag" not in user_cols:
-            logger.info("Applying risk_flag portion of 004_add_system_config.sql")
+            logger.info("Applying risk_flag portion of 006_add_system_config.sql")
             with engine.begin() as conn:
                 conn.execute(
                     text(
@@ -77,3 +77,11 @@ def ensure_database_schema(engine: Engine) -> None:
                         "DEFAULT 0 COMMENT '风险标记：0正常 1预警 2限速' AFTER enrollment_year"
                     )
                 )
+
+    if "ukl_slice" not in table_names:
+        logger.info("Applying migration 007_add_ukl_slice.sql")
+        _run_sql_file(engine, "007_add_ukl_slice.sql")
+
+    if "chat_session_summary" not in table_names:
+        logger.info("Applying migration 008_add_chat_session_summary.sql")
+        _run_sql_file(engine, "008_add_chat_session_summary.sql")

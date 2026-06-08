@@ -5,7 +5,7 @@ export default {
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { GoalBreakdownNode } from '../api/goals'
 import BreakdownPathNode from './BreakdownPathNode.vue'
@@ -24,8 +24,11 @@ const emit = defineEmits<{
   'select-main': [id: number]
 }>()
 
+const expanded = ref(false)
+
 const hasChildren = computed(() => Boolean(props.node.children?.length))
 const isRoot = computed(() => props.depth === 0)
+const isClickable = computed(() => isRoot.value || hasChildren.value)
 
 const statusLabel = computed(() => {
   const s = props.node.status || 'pending'
@@ -40,9 +43,17 @@ const progressPercent = computed(() => {
   return Math.round((props.planProgress.done / props.planProgress.total) * 100)
 })
 
-function onSelectMain() {
-  if (!isRoot.value) return
-  emit('select-main', props.node.id)
+const expandHintText = computed(() =>
+  expanded.value ? '点击收起下级详情' : '点击展开下级详情',
+)
+
+function onBodyClick() {
+  if (hasChildren.value) {
+    expanded.value = !expanded.value
+  }
+  if (isRoot.value) {
+    emit('select-main', props.node.id)
+  }
 }
 </script>
 
@@ -52,7 +63,9 @@ function onSelectMain() {
     :class="{
       'path-node--nested': depth > 0,
       'path-node--branch': hasChildren,
+      'path-node--expanded': hasChildren && expanded,
       'path-node--main-selectable': isRoot,
+      'path-node--expandable': hasChildren && !isRoot,
       'path-node--main-selected': isRoot && selectedMainId === node.id,
     }"
   >
@@ -60,11 +73,12 @@ function onSelectMain() {
       <span v-if="depth > 0" class="path-node__connector" aria-hidden="true" />
       <div
         class="path-node__body"
-        role="button"
-        :tabindex="isRoot ? 0 : -1"
-        @click="onSelectMain"
-        @keydown.enter.prevent="onSelectMain"
-        @keydown.space.prevent="onSelectMain"
+        :role="isClickable ? 'button' : undefined"
+        :tabindex="isClickable ? 0 : -1"
+        :aria-expanded="hasChildren ? expanded : undefined"
+        @click="onBodyClick"
+        @keydown.enter.prevent="onBodyClick"
+        @keydown.space.prevent="onBodyClick"
       >
         <div class="path-node__title-row">
           <span v-if="depth > 0" class="path-node__dot" :class="'path-node__dot--' + (node.status || 'pending')" aria-hidden="true" />
@@ -85,11 +99,11 @@ function onSelectMain() {
           {{ node.description }}
         </p>
         <p v-if="isRoot" class="path-node__hint">点击主节点在右侧查看该阶段的行动计划</p>
+        <p v-if="hasChildren" class="path-node__hint">{{ expandHintText }}</p>
       </div>
     </div>
 
     <div v-if="hasChildren" class="path-node__children">
-      <p class="path-node__children-hint">悬停本节点可展开下级详情</p>
       <div class="path-node__children-inner">
         <BreakdownPathNode
           v-for="child in node.children"
@@ -117,12 +131,14 @@ function onSelectMain() {
   background: var(--surface-strong);
 }
 
-.path-node--main-selectable .path-node__body {
+.path-node--main-selectable .path-node__body,
+.path-node--expandable .path-node__body {
   cursor: pointer;
   border-radius: 12px;
 }
 
-.path-node--main-selectable .path-node__body:focus-visible {
+.path-node--main-selectable .path-node__body:focus-visible,
+.path-node--expandable .path-node__body:focus-visible {
   outline: 2px solid rgba(var(--accent-1-rgb), 0.55);
   outline-offset: 2px;
 }
@@ -132,7 +148,7 @@ function onSelectMain() {
   box-shadow: 0 8px 22px rgba(var(--accent-1-rgb), 0.12);
 }
 
-.path-node--branch:hover {
+.path-node--branch.path-node--expanded {
   border-color: rgba(var(--accent-1-rgb), 0.35);
   box-shadow: 0 10px 28px rgba(var(--accent-1-rgb), 0.12);
 }
@@ -265,13 +281,6 @@ function onSelectMain() {
   overflow: hidden;
 }
 
-.path-node__children-hint {
-  margin: 0 0 0.4rem;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-}
-
 .path-node__children {
   border-top: 1px dashed var(--border);
   padding: 0 0.75rem 0.65rem;
@@ -294,24 +303,10 @@ function onSelectMain() {
   margin-left: 0.35rem;
 }
 
-.path-node--branch:hover > .path-node__children {
+.path-node--expanded > .path-node__children {
   max-height: 2800px;
   opacity: 1;
   pointer-events: auto;
   padding-top: 0.55rem;
-}
-
-@media (hover: none) {
-  .path-node__children-hint {
-    display: none;
-  }
-
-  .path-node__children {
-    max-height: none;
-    opacity: 1;
-    overflow: visible;
-    pointer-events: auto;
-    padding-top: 0.55rem;
-  }
 }
 </style>

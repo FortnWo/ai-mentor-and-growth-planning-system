@@ -10,6 +10,8 @@ from app.models.growth_aggregate import GrowthDailyAggregate
 from app.models.growth_summary import GrowthSummary
 from app.models.verification_code import VerificationCode
 from app.models.system_config import SystemConfig, AIUsageLog
+from app.models.ukl_slice import UklSlice
+from app.models.chat_session_summary import ChatSessionSummary
 
 __all__ = [
     "User",
@@ -36,4 +38,6 @@ __all__ = [
     "VerificationCode",
     "SystemConfig",
     "AIUsageLog",
+    "UklSlice",
+    "ChatSessionSummary",
 ]

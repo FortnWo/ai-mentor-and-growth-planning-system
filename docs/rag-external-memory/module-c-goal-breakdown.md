@@ -137,11 +137,11 @@ C 定 **战略分解**（几步、顺序、粒度）；B 定 **战术排程**（
 | `profile_service.get_profile_for_user` 直接拼 prompt | 改为 UKL profile 切片 |
 | `event_bus` / orchestrator | 保留触发链 |
 
-## 十、留待板块 B 讨论
+## 十、与板块 B / E 的衔接
 
-- `workload_snapshot`、`execution_feedback` 的字段与更新时机
-- `scene=planning_loop` 是否在执行失败后自动触发「先改树再改计划」
-- 与 C 直接相关的已知 bug
+- `workload_snapshot`、`execution_feedback` 生产与更新时机见 [module-b-action-plan.md](./module-b-action-plan.md)
+- 主/子里程碑完成 → E 写 `milestone_achievement`（[module-e-growth-feedback.md](./module-e-growth-feedback.md)）
+- `scene=planning_loop` 是否在执行失败后自动触发「先改树再改计划」——B3 阶段与 E 反馈联动时再定
 
 ## 十一、讨论记录摘要
 
