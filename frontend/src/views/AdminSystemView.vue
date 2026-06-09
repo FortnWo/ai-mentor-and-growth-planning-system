@@ -578,8 +578,9 @@ onMounted(async () => {
         </div>
 
         <UsageStatsPanel
-          v-model:period="logPeriod"
+          :period="logPeriod"
           :loading="logsLoading"
+          @update:period="logPeriod = $event"
           :stats="usageStats"
           :user-detail="userDetail"
           @refresh="loadUsage"

@@ -107,8 +107,9 @@ onMounted(() => {
       </div>
 
       <UsageStatsPanel
-        v-model:period="logPeriod"
+        :period="logPeriod"
         :loading="loading"
+        @update:period="logPeriod = $event"
         :stats="usageStats"
         :user-detail="userDetail"
         detail-title="按模型 / 任务明细"

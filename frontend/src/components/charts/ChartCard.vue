@@ -1,3 +1,9 @@
+<script lang="ts">
+export default {
+  name: 'ChartCard',
+}
+</script>
+
 <script setup lang="ts">
 defineProps<{
   title: string

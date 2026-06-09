@@ -1,5 +1,12 @@
 {
-    "chatCustomizationsEvaluations.customDiagnostics": [
-        
-    ]
+  "chatCustomizationsEvaluations.customDiagnostics": [],
+  "vetur.enable": false,
+  "vetur.validation.script": false,
+  "vetur.validation.template": false,
+  "vetur.validation.style": false,
+  "typescript.tsdk": "frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "[vue]": {
+    "editor.defaultFormatter": "Vue.volar"
+  }
 }

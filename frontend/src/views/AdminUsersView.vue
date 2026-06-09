@@ -47,6 +47,20 @@ type CreateFormState = {
   admin_expires_at: string
 }
 
+type EditFormState = {
+  id?: number
+  username?: string
+  email?: string
+  role?: UserRole
+  full_name: string
+  major: string
+  enrollment_year: string | number
+  phone: string
+  bio: string
+  is_active: boolean
+  admin_permissions: AdminPermissionKey[]
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const router = useRouter()
@@ -74,9 +88,15 @@ const showBulkPanel = ref(false)
 
 // Row edit state
 const editingUserId = ref<number | null>(null)
-const editForm = reactive<
-  Partial<UserCreatePayload & { id: number; admin_permissions: AdminPermissionKey[] }>
->({})
+const editForm = reactive<EditFormState>({
+  full_name: '',
+  major: '',
+  enrollment_year: '',
+  phone: '',
+  bio: '',
+  is_active: true,
+  admin_permissions: [],
+})
 const editOriginalRole = ref<UserRole>('user')
 const editOriginalPermissions = ref<AdminPermissionKey[]>([])
 const editLoading = ref(false)
@@ -578,10 +598,11 @@ onMounted(async () => {
                   <td colspan="11" class="empty-row">{{ loading ? '加载中…' : '暂无用户数据' }}</td>
                 </tr>
               </template>
-              <template v-for="user in users" :key="user.id">
+              <template v-for="user in users">
                 <!-- View row -->
                 <tr
                   v-if="editingUserId !== user.id"
+                  :key="`${user.id}-view`"
                   class="data-row"
                   :class="{ 'data-row--clickable': fullAdmin }"
                   @click="goToUserUsage(user)"
@@ -636,7 +657,7 @@ onMounted(async () => {
                 </tr>
 
                 <!-- Edit row -->
-                <tr v-else class="data-row data-row--editing">
+                <tr v-else :key="`${user.id}-edit`" class="data-row data-row--editing">
                   <td class="col-check">
                     <input type="checkbox" disabled />
                   </td>
@@ -776,8 +797,10 @@ onMounted(async () => {
             </p>
             <div v-else class="span-2">
               <AdminPermissionPicker
-                v-model:level="createForm.admin_permission_level"
-                v-model:permissions="createForm.admin_permissions"
+                :level="createForm.admin_permission_level"
+                :permissions="createForm.admin_permissions"
+                @update:level="createForm.admin_permission_level = $event"
+                @update:permissions="createForm.admin_permissions = $event"
               />
             </div>
             <label v-if="!isSystemAdminUsername" class="field">

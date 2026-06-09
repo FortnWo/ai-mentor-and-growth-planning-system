@@ -1,3 +1,9 @@
+<script lang="ts">
+export default {
+  name: 'LlmPresetPanel',
+}
+</script>
+
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 

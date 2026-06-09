@@ -1,3 +1,9 @@
+<script lang="ts">
+export default {
+  name: 'AppEChart',
+}
+</script>
+
 <script setup lang="ts">
 import type { EChartsOption } from 'echarts'
 import { BarChart, LineChart } from 'echarts/charts'

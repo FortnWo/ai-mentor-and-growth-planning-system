@@ -15,10 +15,17 @@ const props = withDefaults(
     node: GoalBreakdownNode
     depth?: number
     progressByMainId?: Record<number, { total: number; done: number }>
+    planStatusByMainId?: Record<number, { planId: number | null; status: string | null }>
     selectedMainId?: number | null
     mainNodeIds?: number[]
   }>(),
-  { depth: 0, progressByMainId: () => ({}), selectedMainId: null, mainNodeIds: () => [] },
+  {
+    depth: 0,
+    progressByMainId: () => ({}),
+    planStatusByMainId: () => ({}),
+    selectedMainId: null,
+    mainNodeIds: () => [],
+  },
 )
 
 const emit = defineEmits<{
@@ -52,6 +59,55 @@ const planProgress = computed(() => {
 const progressPercent = computed(() => {
   if (!planProgress.value || planProgress.value.total <= 0) return null
   return Math.round((planProgress.value.done / planProgress.value.total) * 100)
+})
+
+const planMeta = computed(() => {
+  if (!isMainSelectable.value) return null
+  return props.planStatusByMainId[props.node.id] ?? null
+})
+
+const planItemTotal = computed(() => {
+  if (!isMainSelectable.value) return 0
+  return planProgress.value?.total ?? 0
+})
+
+const planItemDone = computed(() => {
+  if (!isMainSelectable.value) return 0
+  return planProgress.value?.done ?? 0
+})
+
+const planStatusLabel = computed(() => {
+  const meta = planMeta.value
+  if (!meta?.planId) return '待生成'
+
+  const status = meta.status
+  const total = planItemTotal.value
+  const done = planItemDone.value
+
+  if (status === 'failed') return '生成失败'
+  if (status === 'completed' || (total > 0 && done === total)) return '已完成'
+  if (status === 'in_progress' && total === 0) return '生成中'
+  if (total > 0) {
+    return done > 0 ? '执行中' : '已就绪'
+  }
+  if (status === 'pending' || status === 'in_progress') return '已就绪'
+  return '待生成'
+})
+
+const planStatusClass = computed(() => {
+  const meta = planMeta.value
+  if (!meta?.planId) return 'path-node__plan-badge--pending'
+
+  const status = meta.status
+  const total = planItemTotal.value
+  const done = planItemDone.value
+
+  if (status === 'failed') return 'path-node__plan-badge--failed'
+  if (status === 'completed' || (total > 0 && done === total)) return 'path-node__plan-badge--ready'
+  if (status === 'in_progress' && total === 0) return 'path-node__plan-badge--generating'
+  if (total > 0 && done > 0) return 'path-node__plan-badge--executing'
+  if (total > 0 || status === 'pending' || status === 'in_progress') return 'path-node__plan-badge--ready'
+  return 'path-node__plan-badge--pending'
 })
 
 const expandHintText = computed(() =>
@@ -104,6 +160,14 @@ function onBodyClick() {
             aria-hidden="true"
           />
           <h4 class="path-node__title">{{ node.title }}</h4>
+          <span v-if="isMainSelectable" class="path-node__plan-badge" :class="planStatusClass">
+            <span
+              v-if="planMeta?.planId && planMeta.status === 'in_progress' && planItemTotal === 0"
+              class="path-node__plan-badge-dot"
+              aria-hidden="true"
+            />
+            {{ planStatusLabel }}
+          </span>
           <span class="path-node__status">{{ statusLabel }}</span>
         </div>
         <div v-if="isMainSelectable && progressPercent !== null" class="path-node__progress" aria-label="行动计划完成进度">
@@ -133,6 +197,7 @@ function onBodyClick() {
           :depth="depth + 1"
           :main-node-ids="mainNodeIds"
           :progress-by-main-id="progressByMainId"
+          :plan-status-by-main-id="planStatusByMainId"
           :selected-main-id="selectedMainId"
           @select-main="(id) => emit('select-main', id)"
         />
@@ -253,6 +318,64 @@ function onBodyClick() {
   border-radius: 999px;
   background: var(--chip-bg);
   border: 1px solid var(--border);
+}
+
+.path-node__plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--chip-bg);
+  color: var(--text-muted);
+}
+
+.path-node__plan-badge--generating {
+  color: var(--warning);
+  border-color: rgba(var(--warning-rgb, 234, 179, 8), 0.35);
+  background: rgba(var(--warning-rgb, 234, 179, 8), 0.08);
+}
+
+.path-node__plan-badge--ready,
+.path-node__plan-badge--executing {
+  color: var(--success);
+  border-color: rgba(var(--success-rgb, 34, 197, 94), 0.35);
+  background: rgba(var(--success-rgb, 34, 197, 94), 0.08);
+}
+
+.path-node__plan-badge--executing {
+  color: var(--warning);
+  border-color: rgba(var(--warning-rgb, 234, 179, 8), 0.35);
+  background: rgba(var(--warning-rgb, 234, 179, 8), 0.08);
+}
+
+.path-node__plan-badge--failed {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb, 239, 68, 68), 0.35);
+  background: rgba(var(--danger-rgb, 239, 68, 68), 0.08);
+}
+
+.path-node__plan-badge-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+  animation: path-node-plan-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes path-node-plan-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .path-node__progress {

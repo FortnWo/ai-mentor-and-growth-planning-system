@@ -1,6 +1,13 @@
+<script lang="ts">
+export default {
+  name: 'AdminPermissionPicker',
+}
+</script>
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import type { AdminPermissionLevel } from '../api/user'
 import {
   ADMIN_PERMISSION_OPTIONS,
   type AdminPermissionKey,
@@ -8,7 +15,8 @@ import {
 
 const props = withDefaults(
   defineProps<{
-    modelValue: string[]
+    level: AdminPermissionLevel
+    permissions: string[]
     disabled?: boolean
     placeholder?: string
   }>(),
@@ -19,19 +27,20 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string[]]
+  'update:level': [value: AdminPermissionLevel]
+  'update:permissions': [value: string[]]
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
 const open = ref(false)
 
-const selectedSet = computed(() => new Set(props.modelValue))
+const selectedSet = computed(() => new Set(props.permissions))
 
 const displayText = computed(() => {
-  if (!props.modelValue.length) {
+  if (!props.permissions.length) {
     return ''
   }
-  return props.modelValue.join(', ')
+  return props.permissions.join(', ')
 })
 
 function normalizeSelection(keys: string[]): string[] {
@@ -51,7 +60,7 @@ function normalizeSelection(keys: string[]): string[] {
 }
 
 function emitSelection(next: string[]) {
-  emit('update:modelValue', normalizeSelection(next))
+  emit('update:permissions', normalizeSelection(next))
 }
 
 function isSelected(key: AdminPermissionKey): boolean {
@@ -69,7 +78,7 @@ function togglePermission(key: AdminPermissionKey) {
   if (props.disabled) {
     return
   }
-  const next = [...props.modelValue]
+  const next = [...props.permissions]
   const index = next.indexOf(key)
   if (index >= 0) {
     next.splice(index, 1)
@@ -77,6 +86,17 @@ function togglePermission(key: AdminPermissionKey) {
     next.push(key)
   }
   emitSelection(next)
+}
+
+function handleLevelChange(event: Event) {
+  const target = event.target
+  if (!(target instanceof HTMLSelectElement)) {
+    return
+  }
+  const value = target.value
+  if (value === 'full' || value === 'limited') {
+    emit('update:level', value)
+  }
 }
 
 function handleDocumentClick(event: MouseEvent) {
@@ -102,53 +122,102 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="rootRef" class="permission-picker">
-    <button
-      type="button"
-      class="permission-picker__trigger input"
-      :class="{ 'permission-picker__trigger--placeholder': !displayText }"
-      :disabled="disabled"
-      :aria-expanded="open"
-      aria-haspopup="listbox"
-      @click.stop="toggleOpen"
-    >
-      {{ displayText || placeholder }}
-    </button>
-
-    <div
-      v-show="open"
-      class="permission-picker__panel"
-      role="listbox"
-      aria-multiselectable="true"
-      @click.stop
-    >
-      <label
-        v-for="option in ADMIN_PERMISSION_OPTIONS"
-        :key="option.key"
-        class="permission-picker__option"
-        :class="{ 'permission-picker__option--selected': isSelected(option.key) }"
+  <div class="admin-permission-picker">
+    <label class="admin-permission-picker__level-field">
+      <span class="admin-permission-picker__label">管理员权限级别</span>
+      <select
+        class="admin-permission-picker__level-select input"
+        :value="level"
+        :disabled="disabled"
+        @change="handleLevelChange"
       >
-        <input
-          class="permission-picker__checkbox"
-          type="checkbox"
-          :checked="isSelected(option.key)"
-          :disabled="disabled"
-          @change="togglePermission(option.key)"
-        />
-        <span class="permission-picker__copy">
-          <span class="permission-picker__label">{{ option.label }}</span>
-          <span class="permission-picker__key">{{ option.key }}</span>
-          <span class="permission-picker__desc">{{ option.description }}</span>
-        </span>
-      </label>
+        <option value="full">完整</option>
+        <option value="limited">有限</option>
+      </select>
+    </label>
+
+    <div v-if="level === 'limited'" ref="rootRef" class="permission-picker">
+      <span class="admin-permission-picker__label">管理员权限键</span>
+      <button
+        type="button"
+        class="permission-picker__trigger input"
+        :class="{ 'permission-picker__trigger--placeholder': !displayText }"
+        :disabled="disabled"
+        :aria-expanded="open"
+        aria-haspopup="listbox"
+        @click.stop="toggleOpen"
+      >
+        {{ displayText || placeholder }}
+      </button>
+
+      <div
+        v-show="open"
+        class="permission-picker__panel"
+        role="listbox"
+        aria-multiselectable="true"
+        @click.stop
+      >
+        <label
+          v-for="option in ADMIN_PERMISSION_OPTIONS"
+          :key="option.key"
+          class="permission-picker__option"
+          :class="{ 'permission-picker__option--selected': isSelected(option.key) }"
+        >
+          <input
+            class="permission-picker__checkbox"
+            type="checkbox"
+            :checked="isSelected(option.key)"
+            :disabled="disabled"
+            @change="togglePermission(option.key)"
+          />
+          <span class="permission-picker__copy">
+            <span class="permission-picker__label">{{ option.label }}</span>
+            <span class="permission-picker__key">{{ option.key }}</span>
+            <span class="permission-picker__desc">{{ option.description }}</span>
+          </span>
+        </label>
+      </div>
     </div>
+
+    <p v-else class="admin-permission-picker__hint">
+      完整权限包含全部操作，无需单独勾选。
+    </p>
   </div>
 </template>
 
 <style scoped>
+.admin-permission-picker {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.admin-permission-picker__level-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.admin-permission-picker__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.admin-permission-picker__level-select {
+  width: 100%;
+}
+
+.admin-permission-picker__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .permission-picker {
   position: relative;
   width: 100%;
+  display: grid;
+  gap: 0.35rem;
 }
 
 .permission-picker__trigger {

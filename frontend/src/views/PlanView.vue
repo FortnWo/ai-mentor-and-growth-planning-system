@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { isAxiosError } from 'axios'
 import { ref, computed, onMounted } from 'vue'
-import { createGoal, listGoals, getGoalDetail, refreshGoalBreakdown, deleteGoal, rescheduleGoalPlans, type Goal, type GoalDetail } from '../api/goals'
+import {
+  createGoal,
+  listGoals,
+  getGoalDetail,
+  refreshGoalBreakdown,
+  deleteGoal,
+  rescheduleGoalPlans,
+  type Goal,
+  type GoalDetail,
+  type MainActionPlanProgress,
+} from '../api/goals'
 import { createActionPlan, getActionPlanDetail, listActionPlans, refreshActionPlan, deleteActionPlan, patchActionPlanItemCompletion, type ActionPlan, type ActionPlanDetail, type ActionPlanItem } from '../api/actionPlans'
 import BreakdownPathTree from '../components/BreakdownPathTree.vue'
 import { getApiErrorMessage } from '../utils/apiError'
@@ -64,6 +74,75 @@ const loadActionPlans = async () => {
 function mergeActionPlansForGoal(goalId: number, incoming: ActionPlan[]) {
   const rest = actionPlans.value.filter((plan) => plan.goal_id !== goalId)
   actionPlans.value = [...incoming, ...rest]
+  syncGoalProgressFromPlanSummaries(goalId, incoming)
+}
+
+function syncGoalProgressFromPlanSummaries(goalId: number, summaries: ActionPlan[]) {
+  const goal = selectedGoal.value
+  if (!goal || goal.id !== goalId) return
+
+  const byMain = new Map(summaries.map((plan) => [plan.main_breakdown_id, plan]))
+  const progressRows = goal.main_action_plan_progress ?? []
+  const mergedRows: MainActionPlanProgress[] = progressRows.map((row) => {
+    const plan = byMain.get(row.main_breakdown_id)
+    if (!plan) return row
+    return {
+      ...row,
+      plan_id: plan.id,
+      plan_status: plan.status,
+    }
+  })
+
+  for (const plan of summaries) {
+    if (!mergedRows.some((row) => row.main_breakdown_id === plan.main_breakdown_id)) {
+      mergedRows.push({
+        main_breakdown_id: plan.main_breakdown_id,
+        plan_id: plan.id,
+        plan_status: plan.status,
+        total_items: 0,
+        completed_items: 0,
+      })
+    }
+  }
+
+  selectedGoal.value = {
+    ...goal,
+    main_action_plan_progress: mergedRows,
+  }
+}
+
+function patchMainProgressFromDetail(mainId: number, detail: ActionPlanDetail) {
+  const goal = selectedGoal.value
+  if (!goal) return
+
+  const completedItems = detail.items.filter((item) => item.status === 'completed').length
+  const rows = goal.main_action_plan_progress ?? []
+  const existing = rows.find((row) => row.main_breakdown_id === mainId)
+
+  const nextRow: MainActionPlanProgress = existing
+    ? {
+        ...existing,
+        plan_id: detail.id,
+        plan_status: detail.status,
+        total_items: detail.items.length,
+        completed_items: completedItems,
+      }
+    : {
+        main_breakdown_id: mainId,
+        plan_id: detail.id,
+        plan_status: detail.status,
+        total_items: detail.items.length,
+        completed_items: completedItems,
+      }
+
+  const nextRows = existing
+    ? rows.map((row) => (row.main_breakdown_id === mainId ? nextRow : row))
+    : [...rows, nextRow]
+
+  selectedGoal.value = {
+    ...goal,
+    main_action_plan_progress: nextRows,
+  }
 }
 
 const loadActionPlansForGoal = async (goalId: number) => {
@@ -141,6 +220,9 @@ const pollActionPlansForGoal = async (goalId: number) => {
           if (row?.plan_id) {
             try {
               selectedActionPlan.value = await getActionPlanDetail(row.plan_id)
+              if (selectedActionPlan.value && selectedMainBreakdownId.value != null) {
+                patchMainProgressFromDetail(selectedMainBreakdownId.value, selectedActionPlan.value)
+              }
             } catch {
               selectedActionPlan.value = null
             }
@@ -207,10 +289,13 @@ const upsertActionPlanSummary = (detail: ActionPlanDetail) => {
   const existingIndex = actionPlans.value.findIndex((plan) => plan.id === summary.id)
   if (existingIndex >= 0) {
     actionPlans.value.splice(existingIndex, 1, summary)
-    return
+  } else {
+    actionPlans.value.unshift(summary)
   }
 
-  actionPlans.value.unshift(summary)
+  if (selectedGoal.value?.id === detail.goal_id) {
+    patchMainProgressFromDetail(detail.main_breakdown_id, detail)
+  }
 }
 
 const onSelectMainBreakdown = async (mainId: number) => {
@@ -223,7 +308,10 @@ const onSelectMainBreakdown = async (mainId: number) => {
     const row = selectedGoal.value?.main_action_plan_progress?.find((r) => r.main_breakdown_id === mainId)
     if (row?.plan_id) {
       selectedActionPlan.value = await getActionPlanDetail(row.plan_id)
-      if (selectedActionPlan.value?.status === 'in_progress') {
+      if (selectedActionPlan.value) {
+        patchMainProgressFromDetail(mainId, selectedActionPlan.value)
+      }
+      if (selectedActionPlan.value?.status === 'in_progress' && (selectedActionPlan.value.items?.length ?? 0) === 0) {
         void pollActionPlansForGoal(gid)
       }
     } else {
@@ -452,8 +540,18 @@ const progressByMainId = computed(() => {
   }
   return map
 })
+const planStatusByMainId = computed(() => {
+  const map: Record<number, { planId: number | null; status: string | null }> = {}
+  for (const row of selectedGoal.value?.main_action_plan_progress ?? []) {
+    map[row.main_breakdown_id] = {
+      planId: row.plan_id,
+      status: row.plan_status,
+    }
+  }
+  return map
+})
 const actionPlanItems = computed<ActionPlanItem[]>(() => selectedActionPlan.value?.items || [])
-const isActionPlanLoading = computed(() => isActionPlanFetching.value || isActionPlanPolling.value)
+const isActionPlanDetailLoading = computed(() => isActionPlanFetching.value)
 const actionPlanErrorMessage = computed(() => selectedActionPlan.value?.error_message?.trim() || '')
 const breakdownStatusMessage = computed(() => {
   if (isPollingBreakdown.value) {
@@ -466,10 +564,10 @@ const actionPlanStatusMessage = computed(() => {
     return '正在向 AI 提交生成请求…'
   }
   if (isActionPlanPolling.value) {
-    return 'AI 正在生成你的行动计划，已自动刷新…'
+    return 'AI 正在生成行动计划，可在左侧查看各阶段状态…'
   }
   if (isActionPlanFetching.value) {
-    return '正在加载行动计划详情…'
+    return '正在加载本篇行动计划详情…'
   }
   return ''
 })
@@ -587,6 +685,7 @@ onMounted(() => {
                     :nodes="breakdownDisplayNodes"
                     :main-node-ids="mainBreakdownIds"
                     :progress-by-main-id="progressByMainId"
+                    :plan-status-by-main-id="planStatusByMainId"
                     :selected-main-id="selectedMainBreakdownId"
                     @select-main="onSelectMainBreakdown"
                   />
@@ -608,12 +707,12 @@ onMounted(() => {
                 <div class="detail-actions">
                   <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
                     @click="handleGenerateActionPlan()"
-                    :disabled="isActionPlanBusy || isActionPlanLoading || !hasBreakdown">
+                    :disabled="isActionPlanBusy || isActionPlanDetailLoading || !hasBreakdown">
                     {{ isActionPlanBusy ? '处理中…' : '↻ 重新生成全部' }}
                   </button>
                   <button v-if="selectedActionPlan" class="btn btn--secondary btn--sm"
                     @click="handleRefreshActionPlan()"
-                    :disabled="isActionPlanBusy || isActionPlanLoading">
+                    :disabled="isActionPlanBusy || isActionPlanDetailLoading">
                     {{ isActionPlanBusy ? '处理中…' : '🔄 刷新本篇' }}
                   </button>
                   <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
@@ -628,14 +727,16 @@ onMounted(() => {
                   {{ actionPlanStatusMessage }}
                 </p>
 
-                <div v-if="isActionPlanLoading" class="placeholder detail-card__placeholder">
-                  正在加载行动计划…
-                </div>
-                <div v-else-if="!selectedMainBreakdownId" class="placeholder detail-card__placeholder">
+                <div v-if="!selectedMainBreakdownId" class="placeholder detail-card__placeholder">
                   点击左侧「目标拆解」中的主节点，查看该阶段的行动计划与执行项。
                 </div>
-                <div v-else>
-                  <div v-if="selectedActionPlan" class="action-plan-inner">
+                <div v-else-if="isActionPlanDetailLoading" class="placeholder detail-card__placeholder">
+                  正在加载本篇详情…
+                </div>
+                <div v-else-if="!selectedActionPlan && isActionPlanPolling" class="placeholder detail-card__placeholder">
+                  本篇 AI 生成中，请稍候；也可在左侧查看各阶段状态。
+                </div>
+                <div v-else-if="selectedActionPlan" class="action-plan-inner">
                 <div class="action-plan-card__header">
                   <div>
                     <h4>{{ selectedActionPlan.title }}</h4>
@@ -693,10 +794,9 @@ onMounted(() => {
                     : '该计划有效，但 AI 没有返回条目，请刷新重新生成。' }}
                 </p>
                 </div>
-                  <p v-else class="placeholder detail-card__placeholder">
-                    该主节点尚无行动计划记录，可尝试「重新生成全部」或等待后台生成完成。
-                  </p>
-                </div>
+                <p v-else class="placeholder detail-card__placeholder">
+                  该主节点尚无行动计划记录，可尝试「重新生成全部」或等待后台生成完成。
+                </p>
               </div>
             </div>
           </div>
