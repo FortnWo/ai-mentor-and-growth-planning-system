@@ -16,6 +16,7 @@ from app.schemas.action_plan import ActionPlanDetailRead
 from app.models.growth_record import GrowthRecordType, GrowthRecordSource
 from app.services.goal_breakdown_utils import list_main_breakdown_nodes
 from app.services.growth_record_service import create_growth_record, void_growth_record_by_idempotency_key
+from app.services.ukl_execution_service import maybe_sync_execution_slices
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +444,7 @@ def _upsert_action_plan(
     _sync_aggregate_plan_and_main_status(db, plan)
     db.commit()
     db.refresh(plan)
+    maybe_sync_execution_slices(db, goal.user_id, goal_id=goal.id)
     return plan
 
 
@@ -792,4 +794,6 @@ def update_action_plan_item_completion(
         _sync_aggregate_plan_and_main_status(db, plan_row)
     db.commit()
     db.refresh(item)
+    if plan_row:
+        maybe_sync_execution_slices(db, user_id, goal_id=plan_row.goal_id)
     return item

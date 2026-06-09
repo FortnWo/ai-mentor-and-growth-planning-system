@@ -11,6 +11,7 @@ import app.services.breakdown_service as breakdown_service
 import app.services.chat_service as chat_service
 import app.services.goal_service as goal_service
 import app.services.plan_service as plan_service
+import app.services.profile_service as profile_service
 import app.services.ukl_prompt_service as ukl_prompt_service
 
 
@@ -225,6 +226,18 @@ def _on_action_generated(event: DomainEvent) -> None:
         event.trace_id,
         event.payload,
     )
+    goal_id = event.payload.get("goal_id")
+    db = database_module.SessionLocal()
+    try:
+        from app.services.ukl_execution_service import sync_execution_slices_for_user
+
+        sync_execution_slices_for_user(
+            db,
+            event.user_id,
+            goal_id=goal_id if isinstance(goal_id, int) else None,
+        )
+    finally:
+        db.close()
 
 
 def _on_action_completed(event: DomainEvent) -> None:
@@ -234,6 +247,18 @@ def _on_action_completed(event: DomainEvent) -> None:
         event.trace_id,
         event.payload,
     )
+    goal_id = event.payload.get("goal_id")
+    db = database_module.SessionLocal()
+    try:
+        from app.services.ukl_execution_service import sync_execution_slices_for_user
+
+        sync_execution_slices_for_user(
+            db,
+            event.user_id,
+            goal_id=goal_id if isinstance(goal_id, int) else None,
+        )
+    finally:
+        db.close()
 
 
 def _on_growth_updated(event: DomainEvent) -> None:
@@ -243,6 +268,16 @@ def _on_growth_updated(event: DomainEvent) -> None:
         event.trace_id,
         event.payload,
     )
+    record_id = event.payload.get("record_id")
+    if not isinstance(record_id, int):
+        return
+    db = database_module.SessionLocal()
+    try:
+        from app.services.ukl_growth_service import ingest_growth_journal_for_record
+
+        ingest_growth_journal_for_record(db, event.user_id, record_id)
+    finally:
+        db.close()
 
 
 def initialize_growth_cycle_orchestrator() -> None:

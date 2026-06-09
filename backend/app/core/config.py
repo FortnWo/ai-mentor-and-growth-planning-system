@@ -89,6 +89,17 @@ class Settings(BaseSettings):
         "概括拆解思路、关键支柱与执行节奏；不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
     )
     ACTION_PLAN_COVERAGE_VALIDATION_ENABLED: bool = True
+    EXECUTION_SLICE_ENABLED: bool = True
+    GROWTH_JOURNAL_ENABLED: bool = True
+    GROWTH_JOURNAL_SYSTEM_PROMPT: str = (
+        "你是成长记录叙事助手。根据单条成长记录信息，输出 80-200 字中文叙事投影。"
+        "保留关键事实与情绪色彩，用第二人称；不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
+    )
+    FEEDBACK_SUMMARY_SYSTEM_PROMPT: str = (
+        "你是温暖专业的成长导师。根据用户的 UKL 反馈上下文与当周成长记录锚点，"
+        "写一段 2-4 句的中文周总结，肯定进步并给出下周可执行的小步建议。"
+        "语气亲切、具体、有证据；不要编造；不要输出 markdown 或标题。"
+    )
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
     AUTH_ALGORITHM: str = "HS256"

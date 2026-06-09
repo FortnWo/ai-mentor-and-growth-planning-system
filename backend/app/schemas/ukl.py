@@ -48,6 +48,21 @@ class ExecutionFeedbackPayload(BaseModel):
     by_breakdown_id: dict[str, dict[str, int]] = Field(default_factory=dict)
 
 
+class GrowthJournalPayload(BaseModel):
+    record_id: int
+    title: str
+    narrative: str
+    record_type: str | None = None
+    occurred_at: datetime | None = None
+
+
+class FeedbackAnchorsPayload(BaseModel):
+    goal_refs: list[int] = Field(default_factory=list)
+    record_ids: list[int] = Field(default_factory=list)
+    week_start: str | None = None
+    week_end: str | None = None
+
+
 class ContextBundle(BaseModel):
     scene: str
     narrative_blocks: list[str] = Field(default_factory=list)

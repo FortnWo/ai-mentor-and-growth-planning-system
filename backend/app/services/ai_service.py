@@ -319,6 +319,22 @@ def build_breakdown_summary_response(message: str) -> str:
     )
 
 
+def build_growth_journal_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="growth journal",
+        message=message,
+        instructions=settings.GROWTH_JOURNAL_SYSTEM_PROMPT,
+    )
+
+
+def build_weekly_summary_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="weekly summary",
+        message=message,
+        instructions=settings.FEEDBACK_SUMMARY_SYSTEM_PROMPT,
+    )
+
+
 def build_action_plan_response(message: str) -> str:
     return _invoke_ai(
         task_name="action plan",
