@@ -1,3 +1,9 @@
+"""UKL 切片写入与按场景组装上下文（ContextBundle）。
+
+ingest 按 (user, slice_type, ref) upsert 切片；assemble_context 根据 scene
+（chat/breakdown/action_plan/feedback 等）选取并格式化相关切片供 LLM 使用。
+"""
+
 from __future__ import annotations
 
 import json
@@ -82,6 +88,7 @@ def ingest(
     ref_id: int | None,
     payload: dict[str, Any] | BaseModel,
 ) -> UklSlice:
+    """写入或更新 UKL 切片；相同 (slice_type, ref_type, ref_id) 时递增 version。"""
     serialized = _serialize_payload(payload)
     existing = (
         db.query(UklSlice)
@@ -683,6 +690,7 @@ def assemble_context(
     query: str | None = None,
     **kwargs: Any,
 ) -> ContextBundle:
+    """按 scene 路由到对应组装器；chat 场景可传入 query 以触发 Tier2 事实检索。"""
     if scene == SCENE_CHAT:
         return _assemble_chat_context(db, user_id, query=query)
     if scene == SCENE_BREAKDOWN:

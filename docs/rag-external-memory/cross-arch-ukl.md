@@ -228,7 +228,7 @@ ON_MILESTONE_REACHED:    # 建议新增
 | **UKL2** | 已完成 | `scene=breakdown`/`action_plan`、拆解 UKL 切片、行动计划覆盖校验 |
 | **UKL3** | 已完成 | execution 切片 ingest、`scene=feedback`、growth_journal、周总结 UKL 路径 |
 | **UKL4** | 已完成 | milestone 实体与 `milestone_achievement`、`growth_pattern`/`weekly_narrative`、A2 叙事固化、D 批量补强、`scene=instant_feedback` |
-| **UKL5** | 已完成 | `memory_fact` 切片 + `memory_embedding` 表、异步事实抽取、Tier2 门控向量检索、`[相关事实记忆]` prompt 注入 |
+| **UKL5** | 实现已完成，验收待补 | `memory_fact` + `memory_embedding`、Tier2 门控已合入；**embedding 接入点配置与端到端验收暂缓** |
 
 ## 十三、待实现时细化的项
 
@@ -237,4 +237,5 @@ ON_MILESTONE_REACHED:    # 建议新增
 - `growth_pattern` 批量阈值配置（env / system_config）
 - `ON_MILESTONE_REACHED` 注册与 orchestrator 关系
 - ingest 失败重试、切片版本作废规则
-- A3 `memory_embedding` 选型
+- A3 `memory_embedding`：已选 MySQL + 应用层 cosine；火山方舟 embedding 接入待配置
+- **UKL5 验收清单**（待补）：执行 `009_add_memory_embedding.sql`、配置 `EMBEDDING_MODEL`、验证事实抽取与 Tier2 检索

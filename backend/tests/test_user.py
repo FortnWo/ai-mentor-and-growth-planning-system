@@ -240,7 +240,7 @@ def test_cannot_change_admin_active_status(client):
         headers=headers,
     )
     assert deactivate_admin.status_code == 409
-    assert "active status" in deactivate_admin.json()["detail"].lower()
+    assert "启用状态" in deactivate_admin.json()["detail"]
 
     create_response = client.post(
         "/admin/users",

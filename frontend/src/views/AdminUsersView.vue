@@ -620,7 +620,7 @@ onMounted(async () => {
                     <span class="chip" :class="user.role === 'admin' ? 'chip--admin' : 'chip--user'">
                       {{ user.is_system_admin ? '系统管理员' : user.role === 'admin' ? '管理员' : '学生' }}
                     </span>
-                    <span v-if="user.is_system_admin" class="chip chip--locked" title="权限固定为完整，不可修改">FULL</span>
+                    <span v-if="user.is_system_admin" class="chip chip--locked" title="权限固定为完整，不可修改">完整</span>
                   </td>
                   <td>
                     <span class="chip" :class="user.is_active ? 'chip--active' : 'chip--warn'">

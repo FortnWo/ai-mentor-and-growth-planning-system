@@ -1,3 +1,9 @@
+"""领域事件定义与工厂。
+
+成长周期编排器（growth_cycle_orchestrator）与各服务通过 event_bus 发布/订阅
+DomainEventName 中的事件，驱动画像抽取、目标拆解、行动计划等异步链路。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +14,9 @@ from uuid import uuid4
 
 
 class DomainEventName(str, Enum):
-    ON_CHAT_MESSAGE = "on_chat_message"
+    """领域事件名：值用于 event_bus 订阅键，保持英文 snake_case。"""
+
+    ON_CHAT_MESSAGE = "on_chat_message"  # 用户发送聊天消息后
     ON_PROFILE_UPDATED = "on_profile_updated"
     ON_GOAL_DETECTED = "on_goal_detected"
     ON_GOAL_BREAKDOWN = "on_goal_breakdown"

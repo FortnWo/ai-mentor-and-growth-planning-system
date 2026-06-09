@@ -148,14 +148,14 @@ def refresh_action_plan(db: Session, user_id: int, plan_id: int) -> ActionPlan |
             .first()
         )
         if not main_node:
-            raise ValueError("Action plan is missing its main breakdown node")
+            raise ValueError("行动计划缺少主拆解节点")
 
         prompt = _read_action_plan_prompt(read_db, goal, main_node)
 
     raw_response = chat_service.build_action_plan_response(prompt)
     payload = parse_action_plan_response(raw_response)
     if payload is None:
-        raise ValueError("AI output is not valid JSON")
+        raise ValueError("AI 输出不是有效的 JSON")
 
     with session_scope() as write_db:
         plan = get_action_plan_for_user(write_db, user_id, plan_id)
@@ -230,20 +230,20 @@ def _build_action_plan_prompt_for_main(
     today_iso: str,
 ) -> str:
     lines: list[str] = []
-    lines.append(f"Current date (planning anchor): {today_iso}")
-    lines.append("\nParent goal context:")
-    lines.append(f"Title: {goal.title}")
+    lines.append(f"当前日期（规划锚点）：{today_iso}")
+    lines.append("\n父目标上下文：")
+    lines.append(f"标题：{goal.title}")
     if goal.description:
-        lines.append(f"Description: {goal.description}")
+        lines.append(f"描述：{goal.description}")
     if goal.priority:
-        lines.append(f"Priority: {goal.priority}")
+        lines.append(f"优先级：{goal.priority}")
     if goal.target_date:
-        lines.append(f"Target date: {goal.target_date}")
+        lines.append(f"目标日期：{goal.target_date}")
 
-    lines.append("\nMain milestone (pillar) for this action plan:")
+    lines.append("\n本行动计划对应的主里程碑（支柱）：")
     lines.append(f"- [{main_node.id}] {main_node.title}")
     if main_node.description:
-        lines.append(f"  Description: {main_node.description}")
+        lines.append(f"  描述：{main_node.description}")
 
     if profile:
         profile_bits: list[str] = []
@@ -258,28 +258,28 @@ def _build_action_plan_prompt_for_main(
         if profile.preferences:
             profile_bits.append(f"preferences={', '.join(profile.preferences)}")
         if profile_bits:
-            lines.append("\nExtended profile context:")
+            lines.append("\n扩展画像上下文：")
             lines.extend(profile_bits)
 
-    lines.append("\nSecondary breakdown nodes (use ONLY these as breakdown_ref targets for items):")
+    lines.append("\n次级拆解节点（items 的 breakdown_ref 只能引用以下 id）：")
     if secondary_nodes:
         for node in secondary_nodes:
             desc = f" — {node.description}" if node.description else ""
             lines.append(f"- [{node.id}] {node.title}{desc}")
     else:
         lines.append(
-            "- (No secondary nodes.) Treat the main milestone as the only scope; "
-            "still return concrete items and set breakdown_ref to the main milestone id when needed."
+            "- （无次级节点。）以主里程碑为唯一范围；仍需返回具体行动项，"
+            "必要时将 breakdown_ref 设为主里程碑 id。"
         )
         lines.append(f"- [{main_node.id}] {main_node.title}")
 
     lines.append(
-        "\nReturn strict JSON with structure: {\"plan\": {\"title\": string, \"summary\": string}, "
+        "\n仅输出严格 JSON，结构：{\"plan\": {\"title\": string, \"summary\": string}, "
         "\"items\": [{\"title\": string, \"description\": string|null, \"frequency\": string, "
         "\"schedule\": string|null, \"status\": string, \"start_date\": string|null, "
         "\"due_date\": string|null, \"sequence\": number, \"breakdown_ref\": number|string|null}] }"
-        "\nEach item must map to one secondary breakdown id via breakdown_ref (numeric id). "
-        "Produce enough items to operationalize every secondary node; merge only when clearly redundant."
+        "\n每项须通过 breakdown_ref（数字 id）映射到一个次级拆解节点；"
+        "为每个次级节点产出足够行动项，仅在明显冗余时合并。"
     )
 
     return "\n".join(lines)

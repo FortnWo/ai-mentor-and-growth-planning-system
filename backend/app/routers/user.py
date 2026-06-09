@@ -51,7 +51,7 @@ def get_user(
 ):
     user = user_service.get_user(db, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该用户")
     return user
 
 
@@ -68,7 +68,7 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该用户")
     return user
 
 
@@ -85,7 +85,7 @@ def grant_admin_access(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该用户")
     return user
 
 
@@ -101,7 +101,7 @@ def revoke_admin_access(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该用户")
     return user
 
 
@@ -117,7 +117,7 @@ def delete_user(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该用户")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -145,9 +145,9 @@ def bulk_reset_password(
 ):
     """批量重置用户密码。"""
     if not payload.user_ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_ids is required")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_ids 为必填项")
     if len(payload.new_password) < 8:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password too short")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="密码过短")
 
     result = user_service.bulk_reset_password(db, payload.user_ids, payload.new_password)
     return BulkResetPasswordResponse(**result)
@@ -172,7 +172,7 @@ async def import_users(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="USER_4091: File must be an Excel spreadsheet (.xlsx)",
+            detail="USER_4091: 文件必须是 Excel 表格（.xlsx）",
         )
 
     contents = await file.read()

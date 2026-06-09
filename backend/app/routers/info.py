@@ -25,7 +25,7 @@ def update_my_info(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: 未找到该用户")
     return user
 
 
@@ -41,5 +41,5 @@ def change_my_password(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"INFO_4002: {exc}") from exc
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: User not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="INFO_4001: 未找到该用户")
     return user

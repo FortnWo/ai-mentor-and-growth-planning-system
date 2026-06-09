@@ -71,19 +71,19 @@ def format_ukl_context_section(bundle: ContextBundle) -> str:
 def build_legacy_goal_breakdown_prompt(db: Session, user_id: int, goal: Goal) -> str:
     user_profile = profile_service.get_profile_for_user(db, user_id)
     lines: list[str] = []
-    lines.append("Goal to break down:")
-    lines.append(f"Title: {goal.title}")
+    lines.append("待拆解目标：")
+    lines.append(f"标题：{goal.title}")
     if goal.description:
-        lines.append(f"Description: {goal.description}")
+        lines.append(f"描述：{goal.description}")
 
     if user_profile:
-        lines.append("\nUser profile context:")
+        lines.append("\n用户画像上下文：")
         if user_profile.goals:
-            lines.append(f"User's goals: {', '.join(user_profile.goals)}")
+            lines.append(f"目标：{', '.join(user_profile.goals)}")
         if user_profile.skills:
-            lines.append(f"User's skills: {', '.join(user_profile.skills)}")
+            lines.append(f"技能：{', '.join(user_profile.skills)}")
         if user_profile.interests:
-            lines.append(f"User's interests: {', '.join(user_profile.interests)}")
+            lines.append(f"兴趣：{', '.join(user_profile.interests)}")
 
     return "\n".join(lines)
 
@@ -105,14 +105,14 @@ def build_goal_breakdown_prompt(
         goal_id=goal.id,
         is_refresh=is_refresh,
     )
-    lines = [format_ukl_context_section(bundle), "\n[Goal 实体]"]
-    lines.append(f"Title: {goal.title}")
+    lines = [format_ukl_context_section(bundle), "\n[目标实体]"]
+    lines.append(f"标题：{goal.title}")
     if goal.description:
-        lines.append(f"Description: {goal.description}")
+        lines.append(f"描述：{goal.description}")
     if goal.priority:
-        lines.append(f"Priority: {goal.priority}")
+        lines.append(f"优先级：{goal.priority}")
     if goal.target_date:
-        lines.append(f"Target date: {goal.target_date}")
+        lines.append(f"目标日期：{goal.target_date}")
     return "\n".join(lines)
 
 
@@ -123,40 +123,40 @@ def _format_action_plan_entity_section(
     today_iso: str,
 ) -> list[str]:
     lines: list[str] = []
-    lines.append(f"Current date (planning anchor): {today_iso}")
-    lines.append("\nParent goal context:")
-    lines.append(f"Title: {goal.title}")
+    lines.append(f"当前日期（规划锚点）：{today_iso}")
+    lines.append("\n父目标上下文：")
+    lines.append(f"标题：{goal.title}")
     if goal.description:
-        lines.append(f"Description: {goal.description}")
+        lines.append(f"描述：{goal.description}")
     if goal.priority:
-        lines.append(f"Priority: {goal.priority}")
+        lines.append(f"优先级：{goal.priority}")
     if goal.target_date:
-        lines.append(f"Target date: {goal.target_date}")
+        lines.append(f"目标日期：{goal.target_date}")
 
-    lines.append("\nMain milestone (pillar) for this action plan:")
+    lines.append("\n本行动计划对应的主里程碑（支柱）：")
     lines.append(f"- [{main_node.id}] {main_node.title}")
     if main_node.description:
-        lines.append(f"  Description: {main_node.description}")
+        lines.append(f"  描述：{main_node.description}")
 
-    lines.append("\nSecondary breakdown nodes (use ONLY these as breakdown_ref targets for items):")
+    lines.append("\n次级拆解节点（items 的 breakdown_ref 只能引用以下 id）：")
     if secondary_nodes:
         for node in secondary_nodes:
             desc = f" — {node.description}" if node.description else ""
             lines.append(f"- [{node.id}] {node.title}{desc}")
     else:
         lines.append(
-            "- (No secondary nodes.) Treat the main milestone as the only scope; "
-            "still return concrete items and set breakdown_ref to the main milestone id when needed."
+            "- （无次级节点。）以主里程碑为唯一范围；仍需返回具体行动项，"
+            "必要时将 breakdown_ref 设为主里程碑 id。"
         )
         lines.append(f"- [{main_node.id}] {main_node.title}")
 
     lines.append(
-        "\nReturn strict JSON with structure: {\"plan\": {\"title\": string, \"summary\": string}, "
+        "\n仅输出严格 JSON，结构：{\"plan\": {\"title\": string, \"summary\": string}, "
         "\"items\": [{\"title\": string, \"description\": string|null, \"frequency\": string, "
         "\"schedule\": string|null, \"status\": string, \"start_date\": string|null, "
         "\"due_date\": string|null, \"sequence\": number, \"breakdown_ref\": number|string|null}] }"
-        "\nEach item must map to one secondary breakdown id via breakdown_ref (numeric id). "
-        "Produce enough items to operationalize every secondary node; merge only when clearly redundant."
+        "\n每项须通过 breakdown_ref（数字 id）映射到一个次级拆解节点；"
+        "为每个次级节点产出足够行动项，仅在明显冗余时合并。"
     )
     return lines
 

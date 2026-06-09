@@ -60,22 +60,22 @@ def _normalize_permissions(permissions: list[str] | None) -> list[str]:
 
 def _validate_student_username(username: str) -> None:
     if not STUDENT_USERNAME_RE.fullmatch(username.strip()):
-        raise ValueError("Student username must be a 10-digit student ID")
+        raise ValueError("学生用户名必须为 10 位学号")
 
 
 def _validate_phone(phone: str | None) -> None:
     if phone and not PHONE_RE.fullmatch(phone.strip()):
-        raise ValueError("USER_4002: Phone number must be 11 digits")
+        raise ValueError("USER_4002: 手机号必须为 11 位数字")
 
 
 def _validate_unique_identity(db: Session, *, username: str, email: str, current_user_id: int | None = None) -> None:
     existing_username = get_user_by_username(db, username)
     if existing_username and existing_username.id != current_user_id:
-        raise ValueError("Username already registered")
+        raise ValueError("用户名已被注册")
 
     existing_email = get_user_by_email(db, email)
     if existing_email and existing_email.id != current_user_id:
-        raise ValueError("Email already registered")
+        raise ValueError("邮箱已被注册")
 
 
 def _apply_admin_defaults(user: User) -> None:
@@ -103,7 +103,7 @@ def create_user(db: Session, user_in: UserCreate) -> User:
 
     if system_username and username == system_username:
         if user_in.role != UserRole.ADMIN:
-            raise ValueError("System admin account must remain an administrator")
+            raise ValueError("系统管理员账号必须保持管理员身份")
         user_in = user_in.model_copy(
             update={
                 "role": UserRole.ADMIN,
@@ -140,7 +140,7 @@ def create_user(db: Session, user_in: UserCreate) -> User:
 
     if user_in.role == UserRole.ADMIN:
         if user_in.admin_permission_level == AdminPermissionLevel.LIMITED and not user_in.admin_permissions:
-            raise ValueError("Limited admin accounts require at least one permission")
+            raise ValueError("受限管理员账号至少需要一项权限")
         db_user.admin_permissions = user_in.admin_permissions
 
     _apply_admin_defaults(db_user)
@@ -162,17 +162,17 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
     new_role = update_data.get("role") or db_user.role
 
     if "is_active" in update_data and db_user.role == UserRole.ADMIN:
-        raise ValueError("Admin accounts cannot change active status")
+        raise ValueError("管理员账号不能修改启用状态")
 
     if is_system_admin(db_user):
         system_username = get_system_admin_username()
         if "username" in update_data and new_username != system_username:
-            raise ValueError("System admin username cannot be changed")
+            raise ValueError("系统管理员用户名不可修改")
         if new_role == UserRole.USER:
-            raise ValueError("System admin account cannot be demoted to a student")
+            raise ValueError("系统管理员账号不能降级为学生")
         for field in ("admin_permission_level", "admin_permissions", "admin_expires_at"):
             if field in update_data:
-                raise ValueError("System admin account permissions cannot be modified")
+                raise ValueError("系统管理员账号权限不可修改")
 
     if new_role == UserRole.USER:
         _validate_student_username(new_username)
@@ -206,7 +206,7 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
         if db_user.admin_permission_level is None:
             db_user.admin_permission_level = AdminPermissionLevel.FULL
         if db_user.admin_permission_level == AdminPermissionLevel.LIMITED and not db_user.admin_permissions:
-            raise ValueError("Limited admin accounts require at least one permission")
+            raise ValueError("受限管理员账号至少需要一项权限")
         if db_user.admin_permission_level == AdminPermissionLevel.FULL:
             db_user.admin_permissions = []
 
@@ -231,7 +231,7 @@ def update_info(db: Session, user_id: int, info_in: InfoUpdate) -> User | None:
         new_email = str(update_data["email"]).strip().lower()
         existing = get_user_by_email(db, new_email)
         if existing and existing.id != user_id:
-            raise ValueError("Email already registered")
+            raise ValueError("邮箱已被注册")
         update_data["email"] = new_email
 
     for field, value in update_data.items():
@@ -248,7 +248,7 @@ def change_password(db: Session, user_id: int, password_in: PasswordUpdate) -> U
         return None
 
     if not verify_password(password_in.current_password, db_user.password_hash):
-        raise ValueError("Current password is incorrect")
+        raise ValueError("当前密码不正确")
 
     db_user.password_hash = hash_password(password_in.new_password)
     db.commit()
@@ -269,7 +269,7 @@ def grant_admin_access(db: Session, user_id: int, privilege_in: AdminPrivilegeUp
     db_user.admin_permissions = _normalize_permissions(privilege_in.permissions)
 
     if db_user.admin_permission_level == AdminPermissionLevel.LIMITED and not db_user.admin_permissions:
-        raise ValueError("Limited admin accounts require at least one permission")
+        raise ValueError("受限管理员账号至少需要一项权限")
 
     if db_user.admin_permission_level == AdminPermissionLevel.FULL:
         db_user.admin_permissions = []
@@ -341,17 +341,17 @@ def import_users_from_excel(db: Session, file_bytes: bytes) -> dict:
         import io
         import openpyxl
     except ImportError as exc:
-        raise ValueError("USER_4091: openpyxl is not installed on the server") from exc
+        raise ValueError("USER_4091: 服务器未安装 openpyxl") from exc
 
     try:
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
     except Exception as exc:
-        raise ValueError(f"USER_4091: Cannot parse Excel file: {exc}") from exc
+        raise ValueError(f"USER_4091: 无法解析 Excel 文件: {exc}") from exc
 
     if not rows:
-        raise ValueError("USER_4091: Excel file is empty")
+        raise ValueError("USER_4091: Excel 文件为空")
 
     # Build column index map (first row = header)
     header = [str(cell).strip().lower() if cell is not None else "" for cell in rows[0]]
@@ -385,7 +385,7 @@ def import_users_from_excel(db: Session, file_bytes: bytes) -> dict:
         phone = _cell("phone")
 
         if not username:
-            failed.append({"row": row_num, "reason": "username is required"})
+            failed.append({"row": row_num, "reason": "学号为必填项"})
             continue
 
         password = _cell("password") or DEFAULT_PASSWORD

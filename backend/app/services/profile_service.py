@@ -366,7 +366,7 @@ def refresh_profile_from_chat_history(
     user_id: int,
 ) -> tuple[UserProfile, ProfileExtractionResult]:
     if not settings.PROFILE_EXTRACTION_ENABLED:
-        raise ValueError("Profile extraction is disabled")
+        raise ValueError("画像抽取功能未启用")
 
     messages = list_recent_messages_for_user(
         db,
@@ -374,7 +374,7 @@ def refresh_profile_from_chat_history(
         limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
     )
     if not messages:
-        raise ValueError("No chat history available for extraction")
+        raise ValueError("没有可用于抽取的聊天记录")
 
     from app.services import chat_service
 
@@ -417,7 +417,7 @@ def build_extraction_input(messages: list[ChatMessage]) -> str:
         text = (message.content or "").strip()
         if not text:
             continue
-        speaker = "User" if role == MessageRole.USER.value else "Assistant"
+        speaker = "用户" if role == MessageRole.USER.value else "助手"
         lines.append(f"{speaker}: {text}")
 
     return "\n".join(lines).strip()
@@ -443,7 +443,7 @@ def _normalize_value_to_list(value: object) -> list[str]:
 def _load_json_payload(raw_text: str) -> dict[str, object]:
     text = (raw_text or "").strip()
     if not text:
-        raise ValueError("AI extraction output is empty")
+        raise ValueError("AI 抽取输出为空")
 
     try:
         loaded = json.loads(text)
@@ -451,15 +451,15 @@ def _load_json_payload(raw_text: str) -> dict[str, object]:
         start = text.find("{")
         end = text.rfind("}")
         if start == -1 or end <= start:
-            raise ValueError("AI extraction output is not valid JSON")
+            raise ValueError("AI 抽取输出不是有效的 JSON")
 
         snippet = text[start : end + 1]
         try:
             loaded = json.loads(snippet)
         except json.JSONDecodeError as exc:
-            raise ValueError("AI extraction output is not valid JSON") from exc
+            raise ValueError("AI 抽取输出不是有效的 JSON") from exc
 
     if not isinstance(loaded, dict):
-        raise ValueError("AI extraction output must be a JSON object")
+        raise ValueError("AI 抽取输出必须是 JSON 对象")
 
     return loaded

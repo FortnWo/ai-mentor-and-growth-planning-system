@@ -27,7 +27,7 @@ export function getApiErrorMessage(caughtError: unknown, fallback: string): stri
       return detail
         .map((item) => {
           const location = Array.isArray(item?.loc) ? item.loc.slice(1).join('.') : ''
-          const message = typeof item?.msg === 'string' ? item.msg : 'Validation error'
+          const message = typeof item?.msg === 'string' ? item.msg : '校验错误'
           return location ? `${location}: ${message}` : message
         })
         .join('; ')

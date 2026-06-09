@@ -33,7 +33,7 @@ const emit = defineEmits<{
 
 function formatPresetError(err: unknown, fallback: string): string {
   const msg = getApiErrorMessage(err, fallback)
-  if (msg === 'Not Found') {
+  if (msg === 'Not Found' || msg.includes('未找到')) {
     return 'LLM 预设接口未找到，请重启后端（uvicorn app.main:app --reload）后再试。'
   }
   return msg

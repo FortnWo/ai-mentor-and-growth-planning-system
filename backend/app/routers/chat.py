@@ -86,7 +86,7 @@ def stop_message_generation(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     if not stopped:
-        raise HTTPException(status_code=409, detail="Message is not pending generation")
+        raise HTTPException(status_code=409, detail="该消息不在生成中")
 
     return None
 
@@ -114,7 +114,7 @@ def list_messages(session_id: int, request: Request, current_user: User = Depend
             traceback.format_exc(),
         )
 
-        raise HTTPException(status_code=500, detail="Internal Server Error") from exc
+        raise HTTPException(status_code=500, detail="服务器内部错误") from exc
 
 
 @router.patch("/{session_id}", response_model=ChatSessionRead)
@@ -126,7 +126,7 @@ def rename_session(session_id: int, payload: ChatSessionRenameRequest, current_u
         title=payload.title,
     )
     if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该聊天会话")
 
     return session
 
@@ -135,6 +135,6 @@ def rename_session(session_id: int, payload: ChatSessionRenameRequest, current_u
 def delete_session(session_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     deleted = chat_service.delete_session_for_user(db, user_id=current_user.id, session_id=session_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该聊天会话")
 
     return None

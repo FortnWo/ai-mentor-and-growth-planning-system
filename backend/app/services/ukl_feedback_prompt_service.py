@@ -15,10 +15,10 @@ def build_legacy_weekly_summary_prompt(records: list[GrowthRecord]) -> str:
     parts: list[str] = []
     for record in records:
         parts.append(f"- {record.title}: {record.summary or ''}")
-    prompt_body = "\n".join(parts) or "No notable entries this week."
+    prompt_body = "\n".join(parts) or "本周暂无显著成长记录。"
     return (
-        "You are a compassionate mentor. Given the user's weekly growth timeline below, "
-        f"write a short encouraging weekly summary (2-4 sentences) focusing on progress and next small steps.\n{prompt_body}"
+        "你是富有同理心的成长导师。根据下方用户本周成长时间线，"
+        f"写 2-4 句鼓励性周总结，关注进步与下周可执行的小步建议。\n{prompt_body}"
     )
 
 

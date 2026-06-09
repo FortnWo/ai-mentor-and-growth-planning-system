@@ -54,11 +54,11 @@ def create_action_plan(
     db: Session = Depends(get_db),
 ):
     if not settings.ACTION_PLAN_ENABLED:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Action plan feature is disabled")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="行动计划功能未启用")
 
     goal = goal_service.get_goal_for_user(db, current_user.id, payload.goal_id)
     if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")
 
     existing = plan_service.list_plans_for_goal(db, current_user.id, payload.goal_id)
     already_in_progress = any(plan.status == ActionPlanStatus.IN_PROGRESS.value for plan in existing)
@@ -103,7 +103,7 @@ def get_action_plan_detail(
 ):
     plan = plan_service.get_plan_detail(db, current_user.id, plan_id)
     if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该行动计划")
     return plan
 
 
@@ -123,7 +123,7 @@ def patch_action_plan_item_completion(
         completed=payload.completed,
     )
     if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该行动项")
     return ActionPlanItemRead.model_validate(item)
 
 
@@ -135,7 +135,7 @@ def refresh_action_plan(
     db: Session = Depends(get_db),
 ):
     if not settings.ACTION_PLAN_ENABLED:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Action plan feature is disabled")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="行动计划功能未启用")
 
     existing_plan = plan_service.get_plan_for_user(db, current_user.id, plan_id)
     already_in_progress = bool(existing_plan and existing_plan.status == ActionPlanStatus.IN_PROGRESS.value)
@@ -144,12 +144,12 @@ def refresh_action_plan(
     else:
         plan = plan_service.prepare_plan_for_refresh(db, current_user.id, plan_id, reset_items=False)
         if not plan:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该行动计划")
         submit_ai_task(_process_action_plan_in_background, plan.id, current_user.id)
 
     detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
     if not detail:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该行动计划")
     return detail
 
 
@@ -161,6 +161,6 @@ def delete_action_plan(
 ):
     plan = plan_service.get_plan_for_user(db, current_user.id, plan_id)
     if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该行动计划")
 
     plan_service.delete_plan_for_user(db, current_user.id, plan_id)

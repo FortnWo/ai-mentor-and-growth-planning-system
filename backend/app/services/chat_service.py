@@ -121,7 +121,7 @@ def get_or_create_session(
     if session_id:
         session = get_session_for_user(db, user_id, session_id)
         if not session:
-            raise LookupError("Chat session not found for the user")
+            raise LookupError("未找到该用户的聊天会话")
         return session
 
     return create_session(db, user_id=user_id, title=title or DEFAULT_SESSION_TITLE)
@@ -142,7 +142,7 @@ def list_messages_for_session(
 
     session = session_query.first()
     if not session:
-        raise LookupError("Chat session not found")
+        raise LookupError("未找到该聊天会话")
 
     return (
         db.query(ChatMessage)
@@ -345,7 +345,7 @@ def stop_message_generation(db: Session, *, user_id: int, session_id: int, messa
     """Request cancellation of an in-flight assistant generation."""
     session = get_session_for_user(db, user_id=user_id, session_id=session_id)
     if not session:
-        raise LookupError("Chat session not found")
+        raise LookupError("未找到该聊天会话")
 
     message = (
         db.query(ChatMessage)
@@ -357,7 +357,7 @@ def stop_message_generation(db: Session, *, user_id: int, session_id: int, messa
         .first()
     )
     if not message:
-        raise LookupError("Chat message not found")
+        raise LookupError("未找到该聊天消息")
 
     if infer_message_status(message.role, message.content or "") != MessageDeliveryStatus.PENDING:
         return False

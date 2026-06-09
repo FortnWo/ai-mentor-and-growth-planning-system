@@ -126,5 +126,5 @@ def get_latest_weekly_summary(
 def get_record(record_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     record = growth_service.get_growth_record(db, current_user.id, record_id)
     if not record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Growth record not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该成长记录")
     return GrowthRecordRead.model_validate(record)

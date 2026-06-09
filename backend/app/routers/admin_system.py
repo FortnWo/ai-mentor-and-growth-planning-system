@@ -44,9 +44,9 @@ logger = logging.getLogger("ai_mentor.admin_system")
 
 def _llm_preset_http_error(exc: scs.LlmPresetError) -> HTTPException:
     message = str(exc)
-    if "already exists" in message:
+    if "已存在" in message:
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
-    if "not found" in message:
+    if "未找到" in message:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
 

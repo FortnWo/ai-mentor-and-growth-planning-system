@@ -14,7 +14,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     token_response = auth_service.login(db, payload)
     if not token_response:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
 
     return token_response
 

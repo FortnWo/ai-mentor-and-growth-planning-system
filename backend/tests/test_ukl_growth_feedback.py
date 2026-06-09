@@ -135,5 +135,5 @@ def test_weekly_summary_legacy_when_ukl_disabled(db_session, sample_user, monkey
         date(2026, 6, 1),
         date(2026, 6, 7),
     )
-    assert "compassionate mentor" in captured.get("prompt", "")
+    assert "成长导师" in captured.get("prompt", "")
     assert "[UKL" not in captured.get("prompt", "")

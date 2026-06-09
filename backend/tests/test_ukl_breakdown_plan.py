@@ -201,7 +201,7 @@ def test_build_goal_breakdown_prompt_ukl_on_contains_section(
     monkeypatch.setattr(settings, "UKL_ENABLED", True)
     prompt = ukl_prompt_service.build_goal_breakdown_prompt(db_session, sample_user.id, sample_goal)
     assert "[UKL 上下文]" in prompt
-    assert "[Goal 实体]" in prompt
+    assert "[目标实体]" in prompt
     assert sample_goal.title in prompt
 
 

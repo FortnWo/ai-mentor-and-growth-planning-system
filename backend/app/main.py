@@ -144,7 +144,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error"},
+        content={"detail": "服务器内部错误"},
         headers=_cors_headers_for_origin(request.headers.get("origin")),
     )
 

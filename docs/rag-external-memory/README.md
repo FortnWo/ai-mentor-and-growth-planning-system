@@ -11,6 +11,13 @@
 | E 成长反馈 | [module-e-growth-feedback.md](./module-e-growth-feedback.md) | 已定稿 |
 | 跨板块统一架构（UKL） | [cross-arch-ukl.md](./cross-arch-ukl.md) | 初稿（五板块汇总） |
 
+## UKL 落地进度摘要
+
+| 阶段 | 状态 |
+| --- | --- |
+| UKL0–UKL4 | 已完成并验收 |
+| UKL5 | 实现已完成；embedding 配置与端到端验收待补 |
+
 ## 总体原则
 
 - **标准 RAG**：文档切分 → 向量化 → 检索 → 注入 Prompt → 生成（适用于公共知识、可解释引用）

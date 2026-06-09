@@ -68,7 +68,7 @@ def _decrypt(value: str) -> str:
         return _get_fernet().decrypt(value.encode()).decode()
     except Exception as exc:
         logger.error("system_config: decryption failed: %s", exc)
-        raise ValueError("Failed to decrypt config value") from exc
+        raise ValueError("配置值解密失败") from exc
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ def create_llm_preset(
 ) -> dict[str, Any]:
     name = name.strip()
     if not name:
-        raise LlmPresetError("Preset name is required")
+        raise LlmPresetError("预设名称不能为空")
 
     api_key = (llm_api_key or "").strip() or None
     base_url = (llm_api_base_url or "").strip() or None
@@ -221,14 +221,14 @@ def create_llm_preset(
         api_key = get(db, "llm_api_key")
 
     if not api_key and not base_url and not model:
-        raise LlmPresetError("At least one of API key, base URL, or model is required")
+        raise LlmPresetError("API 密钥、Base URL、模型至少填写一项")
 
     presets = _load_llm_presets_raw(db)
     if len(presets) >= _MAX_LLM_PRESETS:
-        raise LlmPresetError(f"Maximum {_MAX_LLM_PRESETS} presets allowed")
+        raise LlmPresetError(f"最多允许 {_MAX_LLM_PRESETS} 个预设")
 
     if any(p.get("name") == name for p in presets):
-        raise LlmPresetError(f"Preset name already exists: {name}")
+        raise LlmPresetError(f"预设名称已存在: {name}")
 
     preset = {
         "id": str(uuid.uuid4()),
@@ -246,7 +246,7 @@ def delete_llm_preset(db: Session, preset_id: str) -> None:
     presets = _load_llm_presets_raw(db)
     new_presets = [p for p in presets if p.get("id") != preset_id]
     if len(new_presets) == len(presets):
-        raise LlmPresetError("Preset not found")
+        raise LlmPresetError("未找到该预设")
     _save_llm_presets_raw(db, new_presets)
     active_id = get(db, _LLM_ACTIVE_PRESET_ID_KEY)
     if active_id == preset_id:
@@ -257,7 +257,7 @@ def activate_llm_preset(db: Session, preset_id: str) -> None:
     presets = _load_llm_presets_raw(db)
     preset = next((p for p in presets if p.get("id") == preset_id), None)
     if preset is None:
-        raise LlmPresetError("Preset not found")
+        raise LlmPresetError("未找到该预设")
 
     if preset.get("llm_api_key"):
         set(db, "llm_api_key", preset["llm_api_key"])

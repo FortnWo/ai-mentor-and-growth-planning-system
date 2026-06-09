@@ -12,7 +12,7 @@ def _as_date(value: date | str | None) -> date:
     if isinstance(value, date):
         return value
     if value is None:
-        raise ValueError("record_date is required")
+        raise ValueError("record_date 为必填项")
     return date.fromisoformat(str(value))
 
 
@@ -97,9 +97,8 @@ def create_growth_record(
 
     if record_date is not None:
         resolved_record_date = _as_date(record_date)
-    elif resolved_occurred_at is not None:
-        resolved_record_date = resolved_occurred_at.date()
     else:
+        # 与聚合表、前端图表使用同一本地日历日，避免 UTC occurred_at 与 date.today() 跨日不一致
         resolved_record_date = date.today()
 
     # idempotency: refresh timestamps on active rows; restore soft-deleted rows

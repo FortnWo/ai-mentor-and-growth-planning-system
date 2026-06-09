@@ -1,3 +1,9 @@
+"""UKL（用户知识层）切片类型、场景与引用类型常量。
+
+各业务模块写入/读取 ukl_slice 时引用此处枚举；slice_type 表示知识切片语义，
+scene 表示 assemble_context 组装场景，ref_type 表示切片关联实体类型。
+"""
+
 SLICE_TYPE_PROFILE = "profile"
 SLICE_TYPE_GOAL_INTENT = "goal_intent"
 SLICE_TYPE_BREAKDOWN_SUMMARY = "breakdown_summary"

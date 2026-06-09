@@ -432,7 +432,7 @@ def build_action_plan_response(message: str) -> str:
 
 
 def build_session_title_response(user_message: str, assistant_message: str) -> str:
-    prompt = f"User: {user_message.strip()}\nAssistant: {assistant_message.strip()}"
+    prompt = f"用户: {user_message.strip()}\n助手: {assistant_message.strip()}"
     return _invoke_ai(
         task_name="session title",
         message=prompt,

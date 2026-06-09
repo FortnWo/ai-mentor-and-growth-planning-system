@@ -25,50 +25,40 @@ class Settings(BaseSettings):
     PROFILE_EXTRACTION_ENABLED: bool = True
     PROFILE_EXTRACTION_MESSAGE_WINDOW: int = 14
     PROFILE_EXTRACTION_SYSTEM_PROMPT: str = (
-        "You are a profile extraction mentor. "
-        "Extract user profile signals from the dialogue and return strict JSON only. "
-        "Use keys: interests, skills, goals, study_habits, personality, preferences. "
-        "Each key must map to an array of short strings. "
-        "If unknown, return an empty array for that key. "
-        "Do not include markdown or extra commentary."
+        "你是画像提取助手。从对话中提取用户画像信号，仅输出严格 JSON。"
+        "键名必须为英文：interests、skills、goals、study_habits、personality、preferences。"
+        "每个键对应短字符串数组；未知则返回空数组。"
+        "不要输出 markdown 或额外说明。"
     )
     PORTRAIT_SUMMARY_SYSTEM_PROMPT: str = (
-        "You are a student growth mentor. "
-        "Write a concise portrait summary in Chinese (second person, 150-250 characters). "
-        "Use only the trait signals provided in the user message. "
-        "Do not invent facts. "
-        "If no traits are provided, reply exactly: 尚未形成可描述的画像特质，建议多与 AI 导师交流或补充画像字段。"
+        "你是学生成长导师。用第二人称写一段 150-250 字的中文画像摘要。"
+        "仅使用用户消息中提供的特质信号，不要编造。"
+        "若无特质，请原样回复：尚未形成可描述的画像特质，建议多与 AI 导师交流或补充画像字段。"
     )
     GOAL_BREAKDOWN_ENABLED: bool = True
     GOAL_BREAKDOWN_MESSAGE_WINDOW: int = 5
     GOAL_BREAKDOWN_SYSTEM_PROMPT: str = (
-        "You are a goal breakdown assistant. "
-        "Given a user goal and optional context, generate a structured breakdown as strict JSON only. "
-        "Return JSON with 'breakdowns' key containing an array of breakdown nodes. "
-        "Each node must have: title (string), description (string or null), children (array of nodes). "
-        "Prefer a three-level tree: ONE top node mirroring the goal title, "
-        "its direct children as main pillars (3-5 phases), each with branch children as concrete subtasks. "
-        "For simple goals you may use a two-level tree where top-level nodes are main pillars with branch children. "
-        "If unknown, return empty 'breakdowns' array. "
-        "Do not include markdown or extra commentary."
+        "你是目标拆解助手。根据用户目标与可选上下文，仅输出严格 JSON。"
+        "返回含 breakdowns 键的 JSON，值为拆解节点数组。"
+        "每个节点含 title（字符串）、description（字符串或 null）、children（子节点数组）。"
+        "优先三级树：顶层一个节点对应目标标题，子节点为主支柱（3-5 个阶段），再下挂具体子任务。"
+        "简单目标可用两级树。无法拆解时 breakdowns 为空数组。"
+        "不要输出 markdown 或额外说明。"
     )
     ACTION_PLAN_ENABLED: bool = True
     ACTION_PLAN_CONTEXT_MESSAGE_WINDOW: int = 8
     ACTION_PLAN_SYSTEM_PROMPT: str = (
-        "You are an action plan assistant. "
-        "Given a user goal, its breakdown tree, and optional profile context, generate a practical action plan as strict JSON only. "
-        "Return JSON with keys: plan and items. "
-        "plan must contain title and summary. "
-        "items must be an array of objects with: title, description, frequency, schedule, status, start_date, due_date, sequence, breakdown_ref. "
-        "Use status values pending, in_progress, completed, or archived. "
-        "Use frequency values once, daily, weekly, monthly, or custom. "
-        "If unknown, use empty strings or nulls, and keep items as an empty array when no plan can be formed. "
-        "Do not include markdown, code fences, or extra commentary."
+        "你是行动计划助手。根据目标、拆解树与可选画像，仅输出严格 JSON。"
+        "顶层键为 plan 与 items。plan 含 title、summary；"
+        "items 为对象数组，字段：title、description、frequency、schedule、status、start_date、due_date、sequence、breakdown_ref。"
+        "status 取值 pending、in_progress、completed、archived；"
+        "frequency 取值 once、daily、weekly、monthly、custom。"
+        "无法形成计划时 items 为空数组，未知字段用空字符串或 null。"
+        "不要输出 markdown、代码块或额外说明。"
     )
     SESSION_TITLE_SYSTEM_PROMPT: str = (
-        "You are a chat session title generator. "
-        "Given the first user message and assistant reply, output a concise Chinese title (4-16 characters). "
-        "Return only the title text: no quotes, punctuation, markdown, or explanation."
+        "你是对话标题生成助手。根据首条用户消息与助手回复，输出 4-16 字的中文标题。"
+        "只输出标题文本，不要引号、标点、markdown 或解释。"
     )
     ADMIN_LLM_SYSTEM_PROMPT: str = (
         "你是一个专业全能的系统管理助手。"
@@ -139,13 +129,11 @@ class Settings(BaseSettings):
     MEMORY_FACT_MAX_PER_TURN: int = 3
     MEMORY_FACT_MIN_SALIENCE: float = 0.4
     MEMORY_FACT_EXTRACTION_SYSTEM_PROMPT: str = (
-        "You are a memory fact extractor. "
-        "Given a user-assistant dialogue turn, extract durable personal facts stated in the conversation. "
-        "Return strict JSON only: an array of objects with keys fact (string, Chinese), "
-        "salience (float 0-1), tags (array of short strings like schedule, goal, preference). "
-        "Only include facts explicitly stated; do not invent. "
-        "Return an empty array when no durable fact exists. "
-        "Do not include markdown or commentary."
+        "你是记忆事实提取助手。根据一轮用户与助手对话，提取对话中明确陈述的、可长期保留的个人事实。"
+        "仅输出严格 JSON 数组；每项含键 fact（中文字符串）、salience（0-1 浮点数）、"
+        "tags（短字符串数组，如 schedule、goal、preference）。"
+        "只摘录对话中已有内容，不要编造；无事实时返回空数组。"
+        "不要输出 markdown 或额外说明。"
     )
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"

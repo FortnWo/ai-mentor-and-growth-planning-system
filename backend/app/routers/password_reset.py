@@ -86,13 +86,13 @@ def _consume_reset_token(token: str) -> int:
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="RESET_4002: Reset token is invalid or has expired",
+            detail="RESET_4002: 重置令牌无效或已过期",
         )
     user_id, expires_at = entry
     if _utcnow() > expires_at:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="RESET_4002: Reset token has expired",
+            detail="RESET_4002: 重置令牌已过期",
         )
     return user_id
 
@@ -111,7 +111,7 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)):
     if payload.method not in ("phone", "email"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="RESET_4001: method must be 'phone' or 'email'",
+            detail="RESET_4001: method 必须为 phone 或 email",
         )
 
     user = get_user_by_username(db, payload.username)
@@ -119,21 +119,21 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)):
         # Return same message to avoid username enumeration
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="RESET_4001: User not found or contact info not set",
+            detail="RESET_4001: 用户不存在或未设置联系方式",
         )
 
     if payload.method == "phone":
         if not user.phone:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="RESET_4001: No phone number registered for this account",
+                detail="RESET_4001: 该账号未绑定手机号",
             )
         contact = user.phone
     else:
         if not user.email:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="RESET_4001: No email registered for this account",
+                detail="RESET_4001: 该账号未绑定邮箱",
             )
         contact = user.email
 
@@ -141,7 +141,7 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)):
     if not can_send:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"RESET_4003: Please wait {wait_secs} seconds before requesting another code",
+            detail=f"RESET_4003: 请等待 {wait_secs} 秒后再请求验证码",
         )
 
     vc = verification_service.create_code(db, user.id, payload.method)
@@ -164,7 +164,7 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)):
             detail=str(exc),
         ) from exc
 
-    return {"message": "Verification code sent", "method": payload.method}
+    return {"message": "验证码已发送", "method": payload.method}
 
 
 @router.post("/verify", response_model=VerifyCodeResponse)
@@ -174,18 +174,18 @@ def verify_code(payload: VerifyCodeRequest, db: Session = Depends(get_db)):
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="RESET_4001: User not found",
+            detail="RESET_4001: 用户不存在",
         )
 
     ok = verification_service.verify_code(db, user.id, payload.method, payload.code)
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="RESET_4002: Verification code is incorrect or has expired",
+            detail="RESET_4002: 验证码错误或已过期",
         )
 
     token = _issue_reset_token(user.id)
-    return VerifyCodeResponse(reset_token=token, message="Code verified")
+    return VerifyCodeResponse(reset_token=token, message="验证码校验通过")
 
 
 @router.post("/confirm", status_code=status.HTTP_200_OK)
@@ -198,11 +198,11 @@ def confirm_reset(payload: ConfirmResetRequest, db: Session = Depends(get_db)):
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="RESET_4001: User not found",
+            detail="RESET_4001: 用户不存在",
         )
 
     user.password_hash = hash_password(payload.new_password)
     db.commit()
     logger.info("password_reset: password reset successful user_id=%s", user_id)
 
-    return {"message": "Password has been reset successfully"}
+    return {"message": "密码已重置成功"}

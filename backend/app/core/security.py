@@ -39,11 +39,11 @@ def decode_access_token(token: str) -> str:
     try:
         payload = jwt.decode(token, settings.AUTH_SECRET_KEY, algorithms=[settings.AUTH_ALGORITHM])
     except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="认证令牌无效") from exc
 
     subject = payload.get("sub")
     if not subject:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="认证令牌无效")
 
     return str(subject)
 
@@ -55,15 +55,15 @@ def get_current_user(
     from app.services import user_service
 
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="未登录")
 
     user_id = decode_access_token(credentials.credentials)
     if not user_id.isdigit():
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="认证令牌无效")
 
     user = user_service.get_user(db, int(user_id))
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在或已被停用")
 
     return user
 
@@ -112,7 +112,7 @@ def has_full_admin_access(user: User) -> bool:
 def require_admin(permission: str | None = None):
     def dependency(current_user: User = Depends(get_current_user)) -> User:
         if not has_admin_access(current_user, permission):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privilege required")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
         return current_user
 
     return dependency
@@ -123,7 +123,7 @@ def require_full_admin():
         if not has_full_admin_access(current_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Full admin privilege required",
+                detail="需要完整管理员权限",
             )
         return current_user
 

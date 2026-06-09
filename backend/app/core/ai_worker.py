@@ -1,3 +1,9 @@
+"""AI 密集型后台任务线程池。
+
+聊天摘要、画像抽取、事实记忆等通过 submit_ai_task 提交到有界线程池，
+与 HTTP 请求线程解耦；进程退出时 atexit 关闭线程池。
+"""
+
 from __future__ import annotations
 
 import atexit
@@ -28,7 +34,7 @@ def _get_executor() -> ThreadPoolExecutor:
 
 
 def submit_ai_task(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Future[Any]:
-    """Submit a background AI-heavy task to the bounded worker pool."""
+    """将 AI 密集型任务提交到有界后台线程池执行。"""
     return _get_executor().submit(fn, *args, **kwargs)
 
 

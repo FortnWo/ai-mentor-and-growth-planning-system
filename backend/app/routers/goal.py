@@ -58,7 +58,7 @@ def create_goal(
     if not settings.GOAL_BREAKDOWN_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Goal breakdown feature is disabled",
+            detail="目标拆解功能未启用",
         )
 
     # 创建目标
@@ -98,7 +98,7 @@ def get_goal_detail(
     try:
         goal_detail = goal_service.get_goal_detail_for_user(db, current_user.id, goal_id)
         if not goal_detail:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")
         return goal_detail
     except HTTPException:
         raise
@@ -112,7 +112,7 @@ def get_goal_detail(
             exc,
             traceback.format_exc(),
         )
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal Server Error") from exc
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="服务器内部错误") from exc
 
 
 @router.put("/{goal_id}", response_model=GoalRead)
@@ -125,7 +125,7 @@ def update_goal(
     """更新目标元信息"""
     goal = goal_service.update_goal(db, current_user.id, goal_id, payload)
     if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")
     return GoalRead.model_validate(goal)
 
 
@@ -140,12 +140,12 @@ def refresh_goal_breakdown(
     if not settings.GOAL_BREAKDOWN_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Goal breakdown feature is disabled",
+            detail="目标拆解功能未启用",
         )
 
     goal = goal_service.get_goal_for_user(db, current_user.id, goal_id)
     if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")
 
     # 后台重新拆解
     background_tasks.add_task(
@@ -156,7 +156,7 @@ def refresh_goal_breakdown(
         goal.description,
     )
 
-    return {"message": "Goal breakdown refresh started"}
+    return {"message": "目标拆解刷新已开始"}
 
 
 @router.post("/{goal_id}/reschedule", status_code=status.HTTP_202_ACCEPTED)
@@ -170,12 +170,12 @@ def reschedule_goal_plans(
     if not settings.GOAL_BREAKDOWN_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Goal breakdown feature is disabled",
+            detail="目标拆解功能未启用",
         )
 
     goal = goal_service.get_goal_for_user(db, current_user.id, goal_id)
     if not goal:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")
 
     background_tasks.add_task(
         _process_goal_breakdown_in_background,
@@ -185,7 +185,7 @@ def reschedule_goal_plans(
         goal.description,
     )
 
-    return {"message": "Goal reschedule (breakdown + plans) started"}
+    return {"message": "目标重新安排（拆解与计划）已开始"}
 
 
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -197,4 +197,4 @@ def delete_goal(
     """删除目标及其拆解节点"""
     deleted = goal_service.delete_goal(db, current_user.id, goal_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该目标")

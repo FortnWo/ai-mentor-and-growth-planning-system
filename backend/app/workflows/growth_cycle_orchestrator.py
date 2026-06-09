@@ -1,3 +1,9 @@
+"""成长周期事件编排：订阅领域事件并串联画像、拆解、计划等异步任务。
+
+应用启动时调用 initialize_growth_cycle_orchestrator 注册 handler；
+各 handler 在独立 session_scope 中执行业务逻辑，必要时发布后续事件。
+"""
+
 from __future__ import annotations
 
 import logging
@@ -113,7 +119,7 @@ def _on_profile_updated(event: DomainEvent) -> None:
                 event.user_id,
                 GoalCreate(
                     title=title,
-                    description="Detected from AI conversation analysis.",
+                    description="从 AI 对话分析中检测到的目标。",
                     priority="medium",
                     target_date=None,
                 ),
@@ -315,6 +321,7 @@ def _on_growth_pattern_updated(event: DomainEvent) -> None:
 
 
 def initialize_growth_cycle_orchestrator() -> None:
+    """向 event_bus 注册全部成长周期 handler（幂等，仅首次生效）。"""
     global _INITIALIZED
     if _INITIALIZED:
         return

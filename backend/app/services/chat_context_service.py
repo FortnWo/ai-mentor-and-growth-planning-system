@@ -1,3 +1,8 @@
+"""聊天注意力链：Tier1 会话摘要 + UKL 画像/叙事 + Tier2 事实记忆。
+
+为每条用户消息拼装送入 LLM 的上下文块；消息落库后异步触发摘要更新与事实抽取。
+"""
+
 from __future__ import annotations
 
 import logging
@@ -60,9 +65,9 @@ def format_dialogue_lines(messages: list[ChatMessage]) -> list[str]:
         if not content:
             continue
         if role == MessageRole.USER.value:
-            lines.append(f"User: {content}")
+            lines.append(f"用户: {content}")
         elif role == MessageRole.ASSISTANT.value:
-            lines.append(f"Assistant: {content}")
+            lines.append(f"助手: {content}")
     return lines
 
 
@@ -76,9 +81,9 @@ def build_legacy_chat_context(
     messages = filter_completed_messages(list_session_messages(db, session_id))
     lines = format_dialogue_lines(messages)
     current = current_user_message.strip()
-    if not lines or (lines and not lines[-1].startswith(f"User: {current}")):
+    if not lines or (lines and not lines[-1].startswith(f"用户: {current}")):
         if current:
-            lines.append(f"User: {current}")
+            lines.append(f"用户: {current}")
     return "\n".join(lines) if lines else current
 
 
@@ -197,8 +202,8 @@ def build_chat_context(
 
     dialogue_lines = format_dialogue_lines(dialogue_messages)
     current = current_user_message.strip()
-    if current and (not dialogue_lines or not dialogue_lines[-1].startswith(f"User: {current}")):
-        dialogue_lines.append(f"User: {current}")
+    if current and (not dialogue_lines or not dialogue_lines[-1].startswith(f"用户: {current}")):
+        dialogue_lines.append(f"用户: {current}")
 
     if dialogue_lines:
         sections.append("\n".join(dialogue_lines))

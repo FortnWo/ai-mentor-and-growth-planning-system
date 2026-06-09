@@ -1,3 +1,9 @@
+"""进程内领域事件总线。
+
+publish 持久化事件并同步分发给已注册 handler；fail_fast=True 时任一 handler
+异常会抛出 EventDispatchError，否则仅记录警告并继续后续 handler。
+"""
+
 from __future__ import annotations
 
 import logging

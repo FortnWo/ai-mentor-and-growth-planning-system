@@ -1,3 +1,9 @@
+"""UKL5 事实记忆：对话轮次抽取、向量写入与 Tier2 检索。
+
+写路径：LLM 抽取 fact/salience 后写入 ukl_slice 与 memory_embedding；
+读路径：按 query 门控 + cosine/关键词检索，供 chat_context 注入 [相关事实记忆]。
+"""
+
 from __future__ import annotations
 
 import json
@@ -37,6 +43,7 @@ _MIN_SUBSTANTIVE_CHARS = 8
 
 
 def should_trigger_tier2_retrieval(query: str) -> bool:
+    """根据关键词与消息长度判断是否启用 Tier2 事实检索（避免寒暄误触发）。"""
     text = (query or "").strip()
     if not text:
         return False
@@ -298,6 +305,7 @@ def extract_and_ingest_facts_for_turn(
     assistant_message: str,
     session_summary: str | None = None,
 ) -> int:
+    """从单轮对话抽取事实并写入 UKL；返回本次新增事实条数。"""
     if not should_extract_facts(user_message, assistant_message):
         return 0
     if has_facts_for_message(db, user_id, message_id):
@@ -305,9 +313,9 @@ def extract_and_ingest_facts_for_turn(
 
     from app.services import ai_service
 
-    dialogue = f"User: {user_message.strip()}\nAssistant: {assistant_message.strip()}"
+    dialogue = f"用户: {user_message.strip()}\n助手: {assistant_message.strip()}"
     if session_summary and session_summary.strip():
-        dialogue = f"Session summary:\n{session_summary.strip()}\n\n{dialogue}"
+        dialogue = f"会话摘要:\n{session_summary.strip()}\n\n{dialogue}"
 
     try:
         raw = ai_service.build_memory_fact_extraction_response(dialogue)

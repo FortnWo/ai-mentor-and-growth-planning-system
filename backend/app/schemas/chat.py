@@ -32,7 +32,7 @@ class ChatSessionRenameRequest(BaseModel):
     def normalize_title(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Session title cannot be empty")
+            raise ValueError("会话标题不能为空")
 
         return normalized
 

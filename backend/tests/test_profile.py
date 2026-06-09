@@ -214,4 +214,4 @@ def test_refresh_profile_invalid_llm_output_returns_conflict(client, monkeypatch
 
     refresh_response = client.post("/profile/me/refresh-from-chat", headers=headers)
     assert refresh_response.status_code == 409
-    assert "valid JSON" in refresh_response.json()["detail"]
+    assert "JSON" in refresh_response.json()["detail"]
