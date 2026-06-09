@@ -35,6 +35,7 @@ const itemBusyId = ref<number | null>(null)
 const selectedMainBreakdownId = ref<number | null>(null)
 const isRescheduling = ref(false)
 const showGoalPicker = ref(true)
+const progressiveLoadAttemptedPlanIds = ref<Set<number>>(new Set())
 
 function clearError() {
   errorMessage.value = ''
@@ -162,6 +163,45 @@ async function refreshSelectedGoalFromServer(goalId: number) {
   }
 }
 
+function actionPlanPollDelayMs(attempt: number): number {
+  return Math.min(1000 + attempt * 500, 3000)
+}
+
+function isActionPlanGenerationSettled(plan: ActionPlan): boolean {
+  return plan.status !== 'in_progress'
+}
+
+function needsActionPlanDetailLoad(planId: number): boolean {
+  const current = selectedActionPlan.value
+  if (!current || current.id !== planId) return true
+  return (current.items?.length ?? 0) === 0
+}
+
+async function tryProgressiveLoadSelectedPlan(goalId: number, summaries: ActionPlan[]) {
+  const mainId = selectedMainBreakdownId.value
+  if (selectedGoal.value?.id !== goalId || mainId == null) return
+
+  const plan = summaries.find((row) => row.main_breakdown_id === mainId)
+  if (!plan || !isActionPlanGenerationSettled(plan)) return
+  if (!needsActionPlanDetailLoad(plan.id)) return
+  if (progressiveLoadAttemptedPlanIds.value.has(plan.id)) return
+
+  progressiveLoadAttemptedPlanIds.value.add(plan.id)
+  try {
+    isActionPlanFetching.value = true
+    const detail = await getActionPlanDetail(plan.id)
+    selectedActionPlan.value = detail
+    patchMainProgressFromDetail(mainId, detail)
+  } catch {
+    progressiveLoadAttemptedPlanIds.value.delete(plan.id)
+    if (selectedActionPlan.value?.id === plan.id) {
+      selectedActionPlan.value = null
+    }
+  } finally {
+    isActionPlanFetching.value = false
+  }
+}
+
 const pollGoalBreakdown = async (goalId: number) => {
   if (isPollingBreakdown.value && pollingGoalId.value === goalId) return
 
@@ -197,46 +237,51 @@ const pollActionPlansForGoal = async (goalId: number) => {
 
   isActionPlanPolling.value = true
   pollingActionPlanGoalId.value = goalId
+  progressiveLoadAttemptedPlanIds.value = new Set()
 
   const maxAttempts = 40
-  const delayMs = 1200
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const summaries = await listActionPlans(goalId)
       mergeActionPlansForGoal(goalId, summaries)
 
-      await refreshSelectedGoalFromServer(goalId)
+      await tryProgressiveLoadSelectedPlan(goalId, summaries)
 
       const allSettled =
         summaries.length > 0 &&
-        summaries.every((plan) => plan.status !== 'in_progress')
+        summaries.every((plan) => isActionPlanGenerationSettled(plan))
 
       if (allSettled) {
-        if (selectedGoal.value?.id === goalId && selectedMainBreakdownId.value != null) {
+        const mainId = selectedMainBreakdownId.value
+        if (selectedGoal.value?.id === goalId && mainId != null) {
           const row = selectedGoal.value.main_action_plan_progress?.find(
-            (r) => r.main_breakdown_id === selectedMainBreakdownId.value,
+            (r) => r.main_breakdown_id === mainId,
           )
-          if (row?.plan_id) {
+          if (row?.plan_id && needsActionPlanDetailLoad(row.plan_id)) {
             try {
+              isActionPlanFetching.value = true
               selectedActionPlan.value = await getActionPlanDetail(row.plan_id)
-              if (selectedActionPlan.value && selectedMainBreakdownId.value != null) {
-                patchMainProgressFromDetail(selectedMainBreakdownId.value, selectedActionPlan.value)
+              if (selectedActionPlan.value) {
+                patchMainProgressFromDetail(mainId, selectedActionPlan.value)
               }
             } catch {
               selectedActionPlan.value = null
+            } finally {
+              isActionPlanFetching.value = false
             }
           }
         }
         return
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      await new Promise((resolve) => setTimeout(resolve, actionPlanPollDelayMs(attempt)))
     }
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '获取行动计划状态时出现问题。')
     console.error(error)
   } finally {
+    progressiveLoadAttemptedPlanIds.value = new Set()
     if (pollingActionPlanGoalId.value === goalId) {
       isActionPlanPolling.value = false
       pollingActionPlanGoalId.value = null
@@ -551,6 +596,17 @@ const planStatusByMainId = computed(() => {
   return map
 })
 const actionPlanItems = computed<ActionPlanItem[]>(() => selectedActionPlan.value?.items || [])
+const actionPlanGenerationProgress = computed(() => {
+  const goalId = selectedGoal.value?.id
+  if (goalId == null) return null
+
+  const plans = actionPlans.value.filter((plan) => plan.goal_id === goalId)
+  const total = plans.length > 0 ? plans.length : mainBreakdownIds.value.length
+  if (total === 0) return null
+
+  const done = plans.filter((plan) => isActionPlanGenerationSettled(plan)).length
+  return { done, total }
+})
 const isActionPlanDetailLoading = computed(() => isActionPlanFetching.value)
 const actionPlanErrorMessage = computed(() => selectedActionPlan.value?.error_message?.trim() || '')
 const breakdownStatusMessage = computed(() => {
@@ -564,6 +620,10 @@ const actionPlanStatusMessage = computed(() => {
     return '正在向 AI 提交生成请求…'
   }
   if (isActionPlanPolling.value) {
+    const progress = actionPlanGenerationProgress.value
+    if (progress) {
+      return `AI 正在生成行动计划（已完成 ${progress.done} / 共 ${progress.total} 篇），可在左侧查看各阶段状态…`
+    }
     return 'AI 正在生成行动计划，可在左侧查看各阶段状态…'
   }
   if (isActionPlanFetching.value) {

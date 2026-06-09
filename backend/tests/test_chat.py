@@ -85,16 +85,19 @@ def test_send_message_creates_session_and_assistant_reply(client, mocked_ai_resp
     assert data["session"]["id"] > 0
     assert data["session"]["user_id"] == user_id
     assert data["user_message"]["role"] == "user"
-    # assistant_message may be produced in background; poll until it appears
-    if data.get("assistant_message") is None:
-        start = time.time()
-        timeout = 5.0
-        while time.time() - start < timeout:
-            msgs_resp = client.get(f"/chat/{data['session']['id']}/messages", headers={"Authorization": f"Bearer {token}"})
-            msgs = msgs_resp.json()
-            if any(m["role"] == "assistant" for m in msgs):
-                break
-            time.sleep(0.1)
+    assert data["assistant_message"] is not None
+    assert data["assistant_message"]["status"] == "pending"
+
+    # background worker runs inline in tests; poll until completion if needed
+    start = time.time()
+    timeout = 5.0
+    while time.time() - start < timeout:
+        msgs_resp = client.get(f"/chat/{data['session']['id']}/messages", headers={"Authorization": f"Bearer {token}"})
+        msgs = msgs_resp.json()
+        assistant_messages = [m for m in msgs if m["role"] == "assistant"]
+        if assistant_messages and assistant_messages[-1].get("status") == "completed":
+            break
+        time.sleep(0.05)
 
     # final fetch
     msgs_resp = client.get(f"/chat/{data['session']['id']}/messages", headers={"Authorization": f"Bearer {token}"})

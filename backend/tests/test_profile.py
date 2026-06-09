@@ -114,7 +114,7 @@ def test_update_profile_persists_values(client):
 
 
 def test_refresh_profile_from_chat_updates_profile(client, monkeypatch):
-    monkeypatch.setattr(chat_service, "process_message_in_background", lambda session_id, message: None)
+    monkeypatch.setattr(chat_service, "process_message_in_background", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_service, "build_ai_response", lambda message, **_: "Thanks for sharing your context.")
     monkeypatch.setattr(
         chat_service,
@@ -197,7 +197,7 @@ def test_get_profile_insights_requires_auth(client):
 
 
 def test_refresh_profile_invalid_llm_output_returns_conflict(client, monkeypatch):
-    monkeypatch.setattr(chat_service, "process_message_in_background", lambda session_id, message: None)
+    monkeypatch.setattr(chat_service, "process_message_in_background", lambda *args, **kwargs: None)
     monkeypatch.setattr(chat_service, "build_ai_response", lambda message, **_: "Assistant response")
     monkeypatch.setattr(chat_service, "build_profile_extraction_response", lambda message: "not-valid-json")
 

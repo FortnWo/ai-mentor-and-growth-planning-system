@@ -13,9 +13,43 @@ import threading
 
 
 ASSISTANT_FAILURE_MESSAGE = "(The assistant failed to respond.)"
+ASSISTANT_STOPPED_MESSAGE = "（已停止生成）"
 DEFAULT_SESSION_TITLE = "未命名会话"
 _PLACEHOLDER_TITLES = frozenset({DEFAULT_SESSION_TITLE, "New chat"})
 logger = logging.getLogger(__name__)
+
+
+class ChatGenerationRegistry:
+    """Tracks in-flight assistant generations that can be stopped by message id."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stops: dict[int, threading.Event] = {}
+
+    def register(self, message_id: int) -> None:
+        with self._lock:
+            if message_id not in self._stops:
+                self._stops[message_id] = threading.Event()
+
+    def request_stop(self, message_id: int) -> bool:
+        with self._lock:
+            event = self._stops.get(message_id)
+            if event is None:
+                return False
+            event.set()
+            return True
+
+    def is_stopped(self, message_id: int) -> bool:
+        with self._lock:
+            event = self._stops.get(message_id)
+            return bool(event and event.is_set())
+
+    def clear(self, message_id: int) -> None:
+        with self._lock:
+            self._stops.pop(message_id, None)
+
+
+chat_generation_registry = ChatGenerationRegistry()
 
 
 def _extract_response_text(response) -> str:
@@ -39,6 +73,9 @@ def infer_message_status(role: MessageRole | str, content: str) -> MessageDelive
 
     if text == ASSISTANT_FAILURE_MESSAGE:
         return MessageDeliveryStatus.FAILED
+
+    if text == ASSISTANT_STOPPED_MESSAGE:
+        return MessageDeliveryStatus.CANCELLED
 
     return MessageDeliveryStatus.COMPLETED
 
@@ -188,7 +225,7 @@ def maybe_auto_update_session_title(
     title = generate_session_title(user_messages[0].content, assistant_message.content or "")
     session.title = title
     db.add(session)
-    db.commit()
+    db.flush()
     db.refresh(session)
     return title
 
@@ -291,32 +328,148 @@ def create_user_message(db: Session, session: ChatSession, message: str) -> Chat
     return user_message
 
 
-def process_message_in_background(session_id: int, message: str) -> None:
-    """Background worker: call LLM and store assistant message for a session."""
-    # import database module at runtime so tests can override SessionLocal
-    import app.core.database as database_module
+def create_assistant_placeholder(db: Session, session: ChatSession) -> ChatMessage:
+    """Create a pending assistant message before background generation starts."""
+    assistant_message = ChatMessage(
+        session_id=session.id,
+        role=MessageRole.ASSISTANT,
+        content="",
+    )
+    db.add(assistant_message)
+    db.commit()
+    db.refresh(assistant_message)
+    return assistant_message
+
+
+def stop_message_generation(db: Session, *, user_id: int, session_id: int, message_id: int) -> bool:
+    """Request cancellation of an in-flight assistant generation."""
+    session = get_session_for_user(db, user_id=user_id, session_id=session_id)
+    if not session:
+        raise LookupError("Chat session not found")
+
+    message = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.id == message_id,
+            ChatMessage.session_id == session_id,
+            ChatMessage.role == MessageRole.ASSISTANT,
+        )
+        .first()
+    )
+    if not message:
+        raise LookupError("Chat message not found")
+
+    if infer_message_status(message.role, message.content or "") != MessageDeliveryStatus.PENDING:
+        return False
+
+    chat_generation_registry.register(message_id)
+    chat_generation_registry.request_stop(message_id)
+    _finalize_stopped_message(
+        session_id=session_id,
+        assistant_message_id=message_id,
+        owner_id=user_id,
+    )
+    chat_generation_registry.clear(message_id)
+    return True
+
+
+def _finalize_stopped_message(
+    *,
+    session_id: int,
+    assistant_message_id: int,
+    owner_id: int | None,
+) -> None:
     import app.core.ws_manager as ws_module
 
-    db = database_module.SessionLocal()
-    try:
-        session_obj = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        owner_id = session_obj.user_id if session_obj else None
+    from app.core.db_session import session_scope
 
-        # create a placeholder assistant message so clients can show typing/placeholder
-        assistant_message = ChatMessage(
-            session_id=session_id,
-            role=MessageRole.ASSISTANT,
-            content="",
+    with session_scope() as db:
+        assistant_message = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.id == assistant_message_id, ChatMessage.session_id == session_id)
+            .first()
         )
+        if not assistant_message:
+            return
+        if infer_message_status(assistant_message.role, assistant_message.content or "") != MessageDeliveryStatus.PENDING:
+            return
+        assistant_message.content = ASSISTANT_STOPPED_MESSAGE
         db.add(assistant_message)
-        db.commit()
-        db.refresh(assistant_message)
+        db.flush()
+        serialized = serialize_chat_message(assistant_message)
+
+    manager = ws_module.manager
+    loop = getattr(manager, "loop", None)
+    if owner_id and manager and loop:
+        payload = {
+            "type": "new_message",
+            "message": {
+                "id": serialized.id,
+                "session_id": serialized.session_id,
+                "role": serialized.role,
+                "content": serialized.content,
+                "status": serialized.status.value,
+                "created_at": serialized.created_at.isoformat() if serialized.created_at else None,
+            },
+        }
+        try:
+            loop.call_soon_threadsafe(asyncio.create_task, manager.send_personal_message(owner_id, payload))
+        except Exception:
+            pass
+
+    chat_generation_registry.clear(assistant_message_id)
+
+
+def process_message_in_background(session_id: int, message: str, assistant_message_id: int) -> None:
+    """Background worker: call LLM and store assistant message for a session."""
+    import app.core.ws_manager as ws_module
+
+    from app.core.db_session import session_scope
+
+    chat_generation_registry.register(assistant_message_id)
+    owner_id: int | None = None
+    is_admin_session = False
+    prompt: str | None = None
+
+    try:
+        with session_scope() as db:
+            session_obj = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            owner_id = session_obj.user_id if session_obj else None
+
+            if chat_generation_registry.is_stopped(assistant_message_id):
+                _finalize_stopped_message(
+                    session_id=session_id,
+                    assistant_message_id=assistant_message_id,
+                    owner_id=owner_id,
+                )
+                return
+
+            if session_obj:
+                from app.models.user import User, UserRole
+
+                owner_user = db.query(User).filter(User.id == session_obj.user_id).first()
+                is_admin_session = bool(owner_user and owner_user.role == UserRole.ADMIN)
+
+            if is_admin_session:
+                prompt = chat_context_service.build_legacy_chat_context(
+                    db,
+                    session_id=session_id,
+                    current_user_message=message.strip(),
+                )
+            elif owner_id is not None:
+                prompt = chat_context_service.build_chat_context(
+                    db,
+                    user_id=owner_id,
+                    session_id=session_id,
+                    current_user_message=message.strip(),
+                )
+            else:
+                prompt = message.strip()
 
         manager = ws_module.manager
         loop = getattr(manager, "loop", None)
-
-        # start typing heartbeat (best-effort) while LLM generates
         stop_event = threading.Event()
+
         if owner_id and manager and loop:
             async def _heartbeat(user_id: int, msg_id: int):
                 try:
@@ -336,39 +489,28 @@ def process_message_in_background(session_id: int, message: str) -> None:
                     pass
 
             try:
-                loop.call_soon_threadsafe(asyncio.create_task, _heartbeat(owner_id, assistant_message.id))
+                loop.call_soon_threadsafe(asyncio.create_task, _heartbeat(owner_id, assistant_message_id))
             except Exception:
-                # ignore; continue without heartbeat
                 pass
 
-        # build response from LLM (may be slow)
-        # Determine if session owner is admin → use admin chat path
-        assistant_content = None
-        try:
-            is_admin_session = False
-            if session_obj:
-                from app.models.user import User, UserRole
-                owner_user = db.query(User).filter(User.id == session_obj.user_id).first()
-                is_admin_session = bool(owner_user and owner_user.role == UserRole.ADMIN)
+        if chat_generation_registry.is_stopped(assistant_message_id):
+            _finalize_stopped_message(
+                session_id=session_id,
+                assistant_message_id=assistant_message_id,
+                owner_id=owner_id,
+            )
+            return
 
+        assistant_content: str | None = None
+        try:
             if is_admin_session:
-                prompt = chat_context_service.build_legacy_chat_context(
-                    db,
-                    session_id=session_id,
-                    current_user_message=message.strip(),
-                )
                 from app.services.ai_service import build_admin_chat_response
-                assistant_content = build_admin_chat_response(prompt, db=db, user_id=owner_id)
-            elif owner_id is not None:
-                prompt = chat_context_service.build_chat_context(
-                    db,
-                    user_id=owner_id,
-                    session_id=session_id,
-                    current_user_message=message.strip(),
-                )
-                assistant_content = build_ai_response(prompt, db=db, user_id=owner_id)
+
+                assistant_content = build_admin_chat_response(prompt or "", db=None, user_id=owner_id)
+            elif prompt is not None:
+                assistant_content = build_ai_response(prompt, user_id=owner_id)
             else:
-                assistant_content = build_ai_response(message.strip(), db=db, user_id=owner_id)
+                assistant_content = build_ai_response(message.strip(), user_id=owner_id)
         except Exception as exc:
             from app.services.ai_rate_limit_service import AIRateLimitExceeded
 
@@ -377,41 +519,65 @@ def process_message_in_background(session_id: int, message: str) -> None:
             else:
                 assistant_content = ASSISTANT_FAILURE_MESSAGE
 
-        # stop heartbeat
         try:
             stop_event.set()
         except Exception:
             pass
 
-        # persist final assistant content
-        assistant_message.content = assistant_content
-        db.add(assistant_message)
-        db.commit()
-        db.refresh(assistant_message)
+        if chat_generation_registry.is_stopped(assistant_message_id):
+            _finalize_stopped_message(
+                session_id=session_id,
+                assistant_message_id=assistant_message_id,
+                owner_id=owner_id,
+            )
+            return
 
-        # notify connected WebSocket clients (if any) with final message
-        try:
-            if owner_id and manager and loop:
-                payload = {
-                    "type": "new_message",
-                    "message": {
-                        "id": assistant_message.id,
-                        "session_id": assistant_message.session_id,
-                        "role": _role_to_value(assistant_message.role),
-                        "content": assistant_message.content,
-                        "status": infer_message_status(assistant_message.role, assistant_message.content).value,
-                        "created_at": assistant_message.created_at.isoformat() if assistant_message.created_at else None,
-                    },
-                }
+        final_message_payload: dict | None = None
+        final_status: MessageDeliveryStatus | None = None
+        updated_title: str | None = None
+
+        with session_scope() as db:
+            assistant_message = (
+                db.query(ChatMessage)
+                .filter(ChatMessage.id == assistant_message_id, ChatMessage.session_id == session_id)
+                .first()
+            )
+            if not assistant_message:
+                return
+
+            assistant_message.content = assistant_content or ASSISTANT_FAILURE_MESSAGE
+            db.add(assistant_message)
+            db.flush()
+            final_status = infer_message_status(assistant_message.role, assistant_message.content)
+            final_message_payload = {
+                "id": assistant_message.id,
+                "session_id": assistant_message.session_id,
+                "role": _role_to_value(assistant_message.role),
+                "content": assistant_message.content,
+                "status": final_status.value,
+                "created_at": assistant_message.created_at.isoformat() if assistant_message.created_at else None,
+            }
+
+        with session_scope() as db:
+            assistant_message = (
+                db.query(ChatMessage)
+                .filter(ChatMessage.id == assistant_message_id, ChatMessage.session_id == session_id)
+                .first()
+            )
+            if assistant_message:
+                updated_title = maybe_auto_update_session_title(
+                    db,
+                    session_id=session_id,
+                    assistant_message=assistant_message,
+                )
+
+        if final_message_payload and owner_id and manager and loop:
+            try:
+                payload = {"type": "new_message", "message": final_message_payload}
                 loop.call_soon_threadsafe(asyncio.create_task, manager.send_personal_message(owner_id, payload))
-        except Exception:
-            pass
+            except Exception:
+                pass
 
-        updated_title = maybe_auto_update_session_title(
-            db,
-            session_id=session_id,
-            assistant_message=assistant_message,
-        )
         if updated_title and owner_id and manager and loop:
             try:
                 title_payload = {
@@ -423,23 +589,20 @@ def process_message_in_background(session_id: int, message: str) -> None:
             except Exception:
                 pass
 
-        if owner_id:
+        if owner_id and final_status is not None and final_status == MessageDeliveryStatus.COMPLETED:
             chat_context_service.schedule_session_summary_update(session_id, owner_id)
             event_bus.publish(
                 event_name=DomainEventName.ON_CHAT_MESSAGE.value,
                 user_id=owner_id,
                 payload={
                     "session_id": session_id,
-                    "assistant_message_id": assistant_message.id,
-                    "assistant_status": infer_message_status(
-                        assistant_message.role,
-                        assistant_message.content,
-                    ).value,
+                    "assistant_message_id": assistant_message_id,
+                    "assistant_status": final_status.value,
                 },
                 fail_fast=False,
             )
     finally:
-        db.close()
+        chat_generation_registry.clear(assistant_message_id)
 
 
 def _refresh_profile_from_session_history(db: Session, *, session_id: int, user_id: int | None) -> None:

@@ -115,47 +115,44 @@ def _invoke_ai(
     db=None,
     user_id: int | None = None,
 ) -> str:
-    rate_limit_user = None
-    rate_db = db
-    owned_rate_db = False
-    try:
-        if task_name == "chat" and user_id is not None:
-            if rate_db is None:
-                from app.core.database import SessionLocal
+    rate_limit_user_id: int | None = None
+    if task_name == "chat" and user_id is not None:
+        from app.core.db_session import session_scope
+        from app.models.user import User
+        from app.services.ai_rate_limit_service import assert_chat_allowed
 
-                rate_db = SessionLocal()
-                owned_rate_db = True
-            from app.models.user import User
-            from app.services.ai_rate_limit_service import assert_chat_allowed
-
+        with session_scope() as rate_db:
             rate_limit_user = rate_db.query(User).filter(User.id == user_id).first()
             if rate_limit_user is not None:
                 assert_chat_allowed(rate_db, rate_limit_user)
+                rate_limit_user_id = rate_limit_user.id
 
-        try:
-            client = _get_ai_client()
-            model = _get_model()
-            response = client.responses.create(
-                model=model,
-                instructions=instructions,
-                input=message.strip(),
-            )
-        except RuntimeError:
-            raise
-        except Exception as exc:
-            raise AIServiceError(f"AI {task_name} request failed: {exc}") from exc
+    try:
+        client = _get_ai_client()
+        model = _get_model()
+        response = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=message.strip(),
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise AIServiceError(f"AI {task_name} request failed: {exc}") from exc
 
-        _log_usage(model, task_name, response, user_id=user_id)
+    _log_usage(model, task_name, response, user_id=user_id)
 
-        if task_name == "chat" and rate_limit_user is not None and rate_db is not None:
-            from app.services.ai_rate_limit_service import sync_user_risk_flag
+    if task_name == "chat" and rate_limit_user_id is not None:
+        from app.core.db_session import session_scope
+        from app.models.user import User
+        from app.services.ai_rate_limit_service import sync_user_risk_flag
 
-            sync_user_risk_flag(rate_db, rate_limit_user)
+        with session_scope() as rate_db:
+            rate_limit_user = rate_db.query(User).filter(User.id == rate_limit_user_id).first()
+            if rate_limit_user is not None:
+                sync_user_risk_flag(rate_db, rate_limit_user)
 
-        return extract_response_text(response)
-    finally:
-        if owned_rate_db and rate_db is not None:
-            rate_db.close()
+    return extract_response_text(response)
 
 
 def build_session_summary_response(
@@ -192,14 +189,18 @@ def build_chat_response(
     user_id: int | None = None,
 ) -> str:
     if instructions is None:
+        from app.core.db_session import session_scope
         from app.services.system_config_service import resolve_llm_system_prompt
 
-        instructions = resolve_llm_system_prompt(db)
+        if db is not None:
+            instructions = resolve_llm_system_prompt(db)
+        else:
+            with session_scope() as prompt_db:
+                instructions = resolve_llm_system_prompt(prompt_db)
     return _invoke_ai(
         task_name="chat",
         message=message,
         instructions=instructions,
-        db=db,
         user_id=user_id,
     )
 
@@ -208,13 +209,18 @@ def build_admin_chat_response(message: str, db=None, *, user_id: int | None = No
     """
     Admin chat: uses admin system prompt + DB query tools.
     Supports multi-turn tool calling loop.
-    db: optional SQLAlchemy Session for tool execution.
+    db: optional SQLAlchemy Session for tool execution (short-lived scopes used when None).
     user_id: session owner for ai_usage_logs attribution.
     """
+    from app.core.db_session import session_scope
     from app.services.admin_tool_service import ADMIN_TOOLS, execute_tool
     from app.services.system_config_service import resolve_admin_llm_system_prompt
 
-    admin_prompt = resolve_admin_llm_system_prompt(db)
+    if db is not None:
+        admin_prompt = resolve_admin_llm_system_prompt(db)
+    else:
+        with session_scope() as prompt_db:
+            admin_prompt = resolve_admin_llm_system_prompt(prompt_db)
 
     try:
         client = _get_ai_client()
@@ -225,7 +231,7 @@ def build_admin_chat_response(message: str, db=None, *, user_id: int | None = No
     MAX_TOOL_ROUNDS = 5
     current_input: str | list = message.strip()
 
-    for round_num in range(MAX_TOOL_ROUNDS):
+    for _round_num in range(MAX_TOOL_ROUNDS):
         try:
             response = client.responses.create(
                 model=model,
@@ -240,41 +246,42 @@ def build_admin_chat_response(message: str, db=None, *, user_id: int | None = No
 
         _log_usage(model, "admin_chat", response, user_id=user_id)
 
-        # Check for tool_use items in output
         output = getattr(response, "output", None) or []
         tool_calls = [item for item in output if getattr(item, "type", None) == "function_call"]
 
         if not tool_calls:
             return extract_response_text(response)
 
-        # Execute all tool calls and build tool results
-        if db is None:
-            logger.warning("admin_chat: tool call requested but no db session provided")
-            return extract_response_text(response)
-
         tool_results = []
-        for tc in tool_calls:
-            tool_name = getattr(tc, "name", "")
-            call_id = getattr(tc, "call_id", "")
-            raw_args = getattr(tc, "arguments", "{}")
-            try:
-                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                result = execute_tool(db, tool_name, args)
-                logger.info("admin_tool: executed tool=%s args=%s", tool_name, args)
-            except Exception as exc:
-                logger.error("admin_tool: tool %s failed: %s", tool_name, exc)
-                result = json.dumps({"error": f"CHAT_A001: Tool execution failed: {exc}"})
 
-            tool_results.append({
-                "type": "function_call_output",
-                "call_id": call_id,
-                "output": result,
-            })
+        def _execute_tools(tool_session) -> list[dict]:
+            results = []
+            for tc in tool_calls:
+                tool_name = getattr(tc, "name", "")
+                call_id = getattr(tc, "call_id", "")
+                raw_args = getattr(tc, "arguments", "{}")
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    result = execute_tool(tool_session, tool_name, args)
+                    logger.info("admin_tool: executed tool=%s args=%s", tool_name, args)
+                except Exception as exc:
+                    logger.error("admin_tool: tool %s failed: %s", tool_name, exc)
+                    result = json.dumps({"error": f"CHAT_A001: Tool execution failed: {exc}"})
+                results.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": result,
+                })
+            return results
 
-        # For next round, pass current output + tool results
+        if db is not None:
+            tool_results = _execute_tools(db)
+        else:
+            with session_scope() as tool_db:
+                tool_results = _execute_tools(tool_db)
+
         current_input = list(output) + tool_results
 
-    # Exceeded max rounds — fall through to final response
     try:
         response = client.responses.create(
             model=model,

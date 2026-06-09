@@ -1,7 +1,7 @@
 import apiClient from './client'
 
 export type MessageRole = 'user' | 'assistant'
-export type MessageDeliveryStatus = 'pending' | 'completed' | 'failed'
+export type MessageDeliveryStatus = 'pending' | 'completed' | 'failed' | 'cancelled'
 
 export interface ChatSessionRead {
   id: number
@@ -47,3 +47,6 @@ export const deleteSession = (sessionId: number): Promise<void> => apiClient.del
 
 export const renameSession = (sessionId: number, title: string): Promise<ChatSessionRead> =>
   apiClient.patch<ChatSessionRead>(`/chat/${sessionId}`, { title } satisfies RenameSessionPayload).then((response) => response.data)
+
+export const stopMessageGeneration = (sessionId: number, messageId: number): Promise<void> =>
+  apiClient.post(`/chat/${sessionId}/messages/${messageId}/stop`).then(() => undefined)

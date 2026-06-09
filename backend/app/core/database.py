@@ -9,7 +9,9 @@ _engine_kwargs: dict = {
 }
 _connect_args: dict = {}
 if settings.DATABASE_URL.startswith("mysql"):
-    _engine_kwargs["pool_timeout"] = 10
+    _engine_kwargs["pool_size"] = settings.DB_POOL_SIZE
+    _engine_kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+    _engine_kwargs["pool_timeout"] = settings.DB_POOL_TIMEOUT
     _connect_args = {
         "connect_timeout": 5,
         "read_timeout": 30,

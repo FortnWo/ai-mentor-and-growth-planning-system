@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import CompactActionMenu from '../components/CompactActionMenu'
-import { deleteSession, listMessages, listSessions, renameSession, sendMessage } from '../api/chat'
+import { deleteSession, listMessages, listSessions, renameSession, sendMessage, stopMessageGeneration } from '../api/chat'
 import { createWebSocket } from '../utils/ws'
 import type { ChatMessageRead, ChatSessionRead, MessageDeliveryStatus } from '../api/chat'
 import { authState, isFullAdmin, refreshCurrentUser } from '../stores/auth'
@@ -37,6 +37,7 @@ const sessionsWidthPercent = ref<number>(SESSIONS_WIDTH_DEFAULT)
 const isResizingSessions = ref<boolean>(false)
 
 let ws: WebSocket | null = null
+let pollAbortController: AbortController | null = null
 
 function clampSessionsWidth(value: number) {
   return Math.min(SESSIONS_WIDTH_MAX, Math.max(SESSIONS_WIDTH_MIN, value))
@@ -128,6 +129,7 @@ interface LoadMessagesOptions {
 }
 
 const ASSISTANT_FAILURE_FALLBACK = '(The assistant failed to respond.)'
+const ASSISTANT_STOPPED_MESSAGE = '（已停止生成）'
 const DEFAULT_SESSION_TITLE = '未命名会话'
 
 function displaySessionTitle(title?: string | null) {
@@ -157,6 +159,10 @@ function getMessageStatus(message: ChatMessageRead): MessageDeliveryStatus {
 
   if (message.content.trim() === ASSISTANT_FAILURE_FALLBACK) {
     return 'failed'
+  }
+
+  if (message.content.trim() === ASSISTANT_STOPPED_MESSAGE) {
+    return 'cancelled'
   }
 
   return 'completed'
@@ -247,12 +253,28 @@ const activeSessionTitle = computed(() => displaySessionTitle(activeSession.valu
 const sessionCount = computed(() => sessions.value.length)
 const messageCount = computed(() => messages.value.length)
 
+const isGenerating = computed(() =>
+  messages.value.some(
+    (message) => message.role === 'assistant' && getMessageStatus(message) === 'pending',
+  ),
+)
+
+const pendingAssistantMessage = computed(() => {
+  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+    const message = messages.value[index]
+    if (message.role === 'assistant' && getMessageStatus(message) === 'pending') {
+      return message
+    }
+  }
+  return null
+})
+
 function isFinalAssistantMessage(m: ChatMessageRead): boolean {
   if (m.role !== 'assistant') {
     return false
   }
   const status = getMessageStatus(m)
-  return status === 'completed' || status === 'failed'
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
 }
 
 function normalizeMessages(msgs: ChatMessageRead[]): ChatMessageRead[] {
@@ -439,15 +461,108 @@ async function deleteCurrentSession(sessionId: number) {
   }
 }
 
+function abortActivePolling() {
+  if (pollAbortController) {
+    pollAbortController.abort()
+    pollAbortController = null
+  }
+}
+
+async function waitForPendingAssistant(sessionId: number, signal: AbortSignal) {
+  const timeoutMs = 60_000
+  const pollInterval = 1000
+  const start = Date.now()
+
+  while (Date.now() - start < timeoutMs) {
+    if (signal.aborted) {
+      return
+    }
+
+    if (messages.value.some((message) => isFinalAssistantMessage(message))) {
+      return
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    if (signal.aborted) {
+      return
+    }
+
+    try {
+      const msgs = await listMessages(sessionId)
+      messages.value = normalizeMessages(msgs)
+      if (messages.value.some((message) => isFinalAssistantMessage(message))) {
+        return
+      }
+    } catch {
+      // ignore and retry until timeout
+    }
+  }
+}
+
+function startPendingAssistantWatch(sessionId: number) {
+  abortActivePolling()
+  pollAbortController = new AbortController()
+  const signal = pollAbortController.signal
+
+  void (async () => {
+    if (ws) {
+      const waitStart = Date.now()
+      const waitMs = 10_000
+      while (Date.now() - waitStart < waitMs && !signal.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        if (messages.value.some((message) => isFinalAssistantMessage(message))) {
+          return
+        }
+      }
+    }
+
+    if (!signal.aborted && !messages.value.some((message) => isFinalAssistantMessage(message))) {
+      await waitForPendingAssistant(sessionId, signal)
+    }
+
+    if (!signal.aborted) {
+      await refreshSessions({ loadActiveMessages: false })
+    }
+  })()
+}
+
+async function pauseGeneration() {
+  const pending = pendingAssistantMessage.value
+  const sessionId = selectedSessionId.value
+  if (!pending || !sessionId) {
+    return
+  }
+
+  abortActivePolling()
+  clearError()
+
+  try {
+    await stopMessageGeneration(sessionId, pending.id)
+    const index = messages.value.findIndex((message) => message.id === pending.id)
+    if (index >= 0) {
+      messages.value[index] = normalizeMessage({
+        ...messages.value[index],
+        content: ASSISTANT_STOPPED_MESSAGE,
+        status: 'cancelled',
+      })
+    }
+  } catch {
+    error.value = '无法停止生成。'
+  }
+}
+
 async function submitMessage() {
+  if (isGenerating.value) {
+    await pauseGeneration()
+    return
+  }
+
   const text = input.value.trim()
   if (!text) {
     return
   }
 
-  // connect before sending so we won't miss early typing/new_message pushes
   ensureWs()
-
   clearError()
   loading.value = true
   try {
@@ -459,75 +574,24 @@ async function submitMessage() {
 
     input.value = ''
     selectedSessionId.value = response.session.id
-    // refresh sessions list without triggering a second immediate messages fetch
     await refreshSessions({ loadActiveMessages: false })
-    // initial post-send fetch is best-effort and should not flash an error banner
-    await loadMessages(response.session.id, { silent: true })
-    await nextTick()
-    scrollMessagesToBottom()
 
-    // ensure websocket connected to receive assistant reply in real time
-    ensureWs()
-
-    // if assistant message is not present yet, prefer WS push; fall back to polling
-    if (!response.assistant_message) {
-      // if ws is connected, wait briefly for the push (avoid duplicate polling)
-      if (ws) {
-        const waitStart = Date.now()
-        const waitMs = 10_000 // wait up to 10s for websocket push
-        while (Date.now() - waitStart < waitMs) {
-          await new Promise((res) => setTimeout(res, 500))
-          if (messages.value.some((m) => isFinalAssistantMessage(m))) {
-            break
-          }
-        }
-
-        // if we already received assistant via WS, skip polling
-        if (messages.value.some((m) => isFinalAssistantMessage(m))) {
-          // done
-        } else {
-          // fallback to polling for the rest of the timeout window
-          const start = Date.now()
-          const timeoutMs = 60_000
-          const pollInterval = 1000
-
-          while (Date.now() - start < timeoutMs) {
-            await new Promise((res) => setTimeout(res, pollInterval))
-            try {
-              const msgs = await listMessages(response.session.id)
-              messages.value = normalizeMessages(msgs)
-              if (messages.value.some((m) => isFinalAssistantMessage(m))) {
-                break
-              }
-            } catch {
-              // ignore and retry until timeout
-            }
-          }
-        }
+    const nextMessages = await listMessages(response.session.id)
+    messages.value = normalizeMessages(nextMessages)
+    if (response.assistant_message) {
+      const existingIndex = messages.value.findIndex((message) => message.id === response.assistant_message?.id)
+      const normalizedAssistant = normalizeMessage(response.assistant_message)
+      if (existingIndex >= 0) {
+        messages.value[existingIndex] = normalizedAssistant
       } else {
-        // no ws available: poll as before
-        const start = Date.now()
-        const timeoutMs = 60_000 // match backend behavior / client timeout
-        const pollInterval = 1000
-
-        while (Date.now() - start < timeoutMs) {
-          await new Promise((res) => setTimeout(res, pollInterval))
-          try {
-            const msgs = await listMessages(response.session.id)
-            messages.value = normalizeMessages(msgs)
-            // count final assistant message only (pending placeholders do not count)
-            const hasAssistant = messages.value.some((m) => isFinalAssistantMessage(m))
-            if (hasAssistant) {
-              break
-            }
-          } catch {
-            // ignore and retry until timeout
-          }
-        }
+        messages.value.push(normalizedAssistant)
       }
     }
 
-    await refreshSessions({ loadActiveMessages: false })
+    await nextTick()
+    scrollMessagesToBottom()
+    ensureWs()
+    startPendingAssistantWatch(response.session.id)
   } catch {
     error.value = '无法发送消息。'
   } finally {
@@ -546,6 +610,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  abortActivePolling()
   if (isResizingSessions.value) {
     isResizingSessions.value = false
     saveSessionsWidth()
@@ -703,6 +768,7 @@ watch(
             <strong>{{ message.role === 'user' ? '' : assistantLabel }}</strong>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'pending'">正在生成…</small>
             <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'failed'">生成失败</small>
+            <small v-if="message.role === 'assistant' && getMessageStatus(message) === 'cancelled'">已停止</small>
             <p>{{ message.content }}</p>
           </div>
 
@@ -710,8 +776,15 @@ watch(
         </div>
 
         <form class="message-form" @submit.prevent="submitMessage">
-          <input v-model="input" :disabled="loading" class="input" :placeholder="inputPlaceholder" />
-          <button class="button button--primary" :disabled="loading" type="submit">发送</button>
+          <input v-model="input" :disabled="loading || isGenerating" class="input" :placeholder="inputPlaceholder" />
+          <button
+            class="button button--primary"
+            :disabled="loading && !isGenerating"
+            :type="isGenerating ? 'button' : 'submit'"
+            @click="isGenerating ? pauseGeneration() : undefined"
+          >
+            {{ isGenerating ? '暂停' : '发送' }}
+          </button>
         </form>
       </section>
     </section>

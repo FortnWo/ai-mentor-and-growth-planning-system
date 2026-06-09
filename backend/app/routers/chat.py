@@ -1,9 +1,10 @@
 import logging
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
+from app.core.ai_worker import submit_ai_task
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.user import User
@@ -46,17 +47,48 @@ def send_message(
             detail=str(exc),
         ) from exc
 
-    # persist user message immediately
     user_message = chat_service.create_user_message(db, session=session, message=payload.message)
+    assistant_placeholder = chat_service.create_assistant_placeholder(db, session)
+    chat_service.chat_generation_registry.register(assistant_placeholder.id)
 
-    # schedule background processing to build and store assistant message
-    background_tasks.add_task(chat_service.process_message_in_background, session.id, payload.message)
+    def _enqueue_chat_worker() -> None:
+        submit_ai_task(
+            chat_service.process_message_in_background,
+            session.id,
+            payload.message,
+            assistant_placeholder.id,
+        )
+
+    background_tasks.add_task(_enqueue_chat_worker)
 
     return ChatSendResponse(
         session=session,
         user_message=chat_service.serialize_chat_message(user_message),
-        assistant_message=None,
+        assistant_message=chat_service.serialize_chat_message(assistant_placeholder),
     )
+
+
+@router.post("/{session_id}/messages/{message_id}/stop", status_code=status.HTTP_204_NO_CONTENT)
+def stop_message_generation(
+    session_id: int,
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        stopped = chat_service.stop_message_generation(
+            db,
+            user_id=current_user.id,
+            session_id=session_id,
+            message_id=message_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if not stopped:
+        raise HTTPException(status_code=409, detail="Message is not pending generation")
+
+    return None
 
 
 @router.get("/sessions", response_model=list[ChatSessionRead])
@@ -83,8 +115,6 @@ def list_messages(session_id: int, request: Request, current_user: User = Depend
         )
 
         raise HTTPException(status_code=500, detail="Internal Server Error") from exc
-
-
 
 
 @router.patch("/{session_id}", response_model=ChatSessionRead)

@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str = "mysql+pymysql://user:password@localhost:3306/ai_mentor_db"
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    AI_BACKGROUND_MAX_WORKERS: int = 12
 
     ALLOWED_ORIGINS: list[str] = ["http://localhost:5173"]
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 
 from app.core.config import settings
+from app.core.db_session import session_scope
 from app.core.domain_events import DomainEvent, DomainEventName
 from app.core.event_bus import event_bus
 from app.schemas.goal import GoalCreate
-import app.core.database as database_module
 import app.services.breakdown_service as breakdown_service
 import app.services.chat_service as chat_service
 import app.services.goal_service as goal_service
@@ -53,36 +53,39 @@ def _on_chat_message(event: DomainEvent) -> None:
         logger.warning("Skip chat event without valid session_id trace_id=%s", event.trace_id)
         return
 
-    db = database_module.SessionLocal()
-    try:
+    extraction_input: str | None = None
+    with session_scope() as db:
         messages = profile_service.list_recent_messages_for_session(
             db,
             session_id=session_id,
             limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
         )
         extraction_input = profile_service.build_extraction_input(messages)
-        if not extraction_input:
-            return
 
-        raw_result = chat_service.build_profile_extraction_response(extraction_input)
-        extraction_result = profile_service.parse_extraction_result(raw_result)
+    if not extraction_input:
+        return
+
+    raw_result = chat_service.build_profile_extraction_response(extraction_input)
+    extraction_result = profile_service.parse_extraction_result(raw_result)
+
+    profile_id: int
+    with session_scope() as db:
         profile = profile_service.apply_extraction_result_for_user(
             db,
             user_id=event.user_id,
             result=extraction_result,
         )
+        profile_id = profile.id
 
-        _publish_followup_event(
-            DomainEventName.ON_PROFILE_UPDATED,
-            source_event=event,
-            payload={
-                "session_id": session_id,
-                "profile_id": profile.id,
-                "extracted": extraction_result.model_dump(),
-            },
-        )
-    finally:
-        db.close()
+    _publish_followup_event(
+        DomainEventName.ON_PROFILE_UPDATED,
+        source_event=event,
+        payload={
+            "session_id": session_id,
+            "profile_id": profile_id,
+            "extracted": extraction_result.model_dump(),
+        },
+    )
 
 
 def _on_profile_updated(event: DomainEvent) -> None:
@@ -92,8 +95,7 @@ def _on_profile_updated(event: DomainEvent) -> None:
     if not goal_titles:
         return
 
-    db = database_module.SessionLocal()
-    try:
+    with session_scope() as db:
         existing_goals = goal_service.list_goals_for_user(db, event.user_id)
         existing_titles = {
             (goal.title or "").strip().lower()
@@ -127,8 +129,6 @@ def _on_profile_updated(event: DomainEvent) -> None:
                     "source": "profile_extraction",
                 },
             )
-    finally:
-        db.close()
 
 
 def _on_goal_detected(event: DomainEvent) -> None:
@@ -137,20 +137,21 @@ def _on_goal_detected(event: DomainEvent) -> None:
         logger.warning("Skip goal detection event without valid goal_id trace_id=%s", event.trace_id)
         return
 
-    db = database_module.SessionLocal()
-    try:
+    prompt: str | None = None
+    with session_scope() as db:
         goal = goal_service.get_goal_for_user(db, event.user_id, goal_id)
         if not goal:
             logger.warning("Goal not found for breakdown goal_id=%s user_id=%s", goal_id, event.user_id)
             return
-
         prompt = ukl_prompt_service.build_goal_breakdown_prompt(db, event.user_id, goal)
-        raw_response = chat_service.build_goal_breakdown_response(prompt)
-        breakdown_data = breakdown_service.parse_breakdown_response(raw_response)
-        if not breakdown_data:
-            logger.warning("Failed to parse goal breakdown for goal_id=%s", goal_id)
-            return
 
+    raw_response = chat_service.build_goal_breakdown_response(prompt)
+    breakdown_data = breakdown_service.parse_breakdown_response(raw_response)
+    if not breakdown_data:
+        logger.warning("Failed to parse goal breakdown for goal_id=%s", goal_id)
+        return
+
+    with session_scope() as db:
         success = breakdown_service.apply_breakdown_for_goal(db, event.user_id, goal_id, breakdown_data)
         if not success:
             logger.warning("Failed to apply goal breakdown for goal_id=%s", goal_id)
@@ -163,15 +164,13 @@ def _on_goal_detected(event: DomainEvent) -> None:
         except Exception:
             logger.exception("Goal intent ingest failed goal_id=%s", goal_id)
 
-        _publish_followup_event(
-            DomainEventName.ON_GOAL_BREAKDOWN,
-            source_event=event,
-            payload={
-                "goal_id": goal_id,
-            },
-        )
-    finally:
-        db.close()
+    _publish_followup_event(
+        DomainEventName.ON_GOAL_BREAKDOWN,
+        source_event=event,
+        payload={
+            "goal_id": goal_id,
+        },
+    )
 
 
 def _on_goal_breakdown(event: DomainEvent) -> None:
@@ -180,8 +179,8 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
         logger.warning("Skip goal breakdown event without valid goal_id trace_id=%s", event.trace_id)
         return
 
-    db = database_module.SessionLocal()
-    try:
+    plan_ids: list[int] = []
+    with session_scope() as db:
         plans = plan_service.prepare_plans_for_goal(
             db,
             event.user_id,
@@ -191,39 +190,41 @@ def _on_goal_breakdown(event: DomainEvent) -> None:
         if not plans:
             logger.warning("Failed to prepare action plans for goal_id=%s user_id=%s", goal_id, event.user_id)
             return
+        plan_ids = [plan.id for plan in plans]
 
-        plan_statuses: list[dict] = []
-        for plan in plans:
-            try:
-                plan_service.generate_plan_with_retry(db, event.user_id, plan.id)
-            except (RuntimeError, ValueError) as exc:
-                plan_service.mark_plan_failed(db, plan.id, str(exc))
-                logger.warning(
-                    "Action plan generation failed plan_id=%s goal_id=%s user_id=%s error=%s",
-                    plan.id,
-                    goal_id,
-                    event.user_id,
-                    exc,
-                )
+    plan_statuses: list[dict] = []
+    for plan_id in plan_ids:
+        try:
+            with session_scope() as db:
+                plan_service.generate_plan_with_retry(db, event.user_id, plan_id)
+        except (RuntimeError, ValueError) as exc:
+            with session_scope() as db:
+                plan_service.mark_plan_failed(db, plan_id, str(exc))
+            logger.warning(
+                "Action plan generation failed plan_id=%s goal_id=%s user_id=%s error=%s",
+                plan_id,
+                goal_id,
+                event.user_id,
+                exc,
+            )
 
-            refreshed = plan_service.get_plan_for_user(db, event.user_id, plan.id)
+        with session_scope() as db:
+            refreshed = plan_service.get_plan_for_user(db, event.user_id, plan_id)
             plan_statuses.append(
                 {
-                    "plan_id": plan.id,
+                    "plan_id": plan_id,
                     "plan_status": refreshed.status if refreshed else "failed",
                 }
             )
 
-        _publish_followup_event(
-            DomainEventName.ON_ACTION_GENERATED,
-            source_event=event,
-            payload={
-                "goal_id": goal_id,
-                "plans": plan_statuses,
-            },
-        )
-    finally:
-        db.close()
+    _publish_followup_event(
+        DomainEventName.ON_ACTION_GENERATED,
+        source_event=event,
+        payload={
+            "goal_id": goal_id,
+            "plans": plan_statuses,
+        },
+    )
 
 
 def _on_action_generated(event: DomainEvent) -> None:
@@ -234,8 +235,7 @@ def _on_action_generated(event: DomainEvent) -> None:
         event.payload,
     )
     goal_id = event.payload.get("goal_id")
-    db = database_module.SessionLocal()
-    try:
+    with session_scope() as db:
         from app.services.ukl_execution_service import sync_execution_slices_for_user
 
         sync_execution_slices_for_user(
@@ -243,8 +243,6 @@ def _on_action_generated(event: DomainEvent) -> None:
             event.user_id,
             goal_id=goal_id if isinstance(goal_id, int) else None,
         )
-    finally:
-        db.close()
 
 
 def _on_action_completed(event: DomainEvent) -> None:
@@ -255,8 +253,7 @@ def _on_action_completed(event: DomainEvent) -> None:
         event.payload,
     )
     goal_id = event.payload.get("goal_id")
-    db = database_module.SessionLocal()
-    try:
+    with session_scope() as db:
         from app.services.ukl_execution_service import sync_execution_slices_for_user
 
         sync_execution_slices_for_user(
@@ -264,8 +261,6 @@ def _on_action_completed(event: DomainEvent) -> None:
             event.user_id,
             goal_id=goal_id if isinstance(goal_id, int) else None,
         )
-    finally:
-        db.close()
 
 
 def _on_growth_updated(event: DomainEvent) -> None:
@@ -278,8 +273,7 @@ def _on_growth_updated(event: DomainEvent) -> None:
     record_id = event.payload.get("record_id")
     if not isinstance(record_id, int):
         return
-    db = database_module.SessionLocal()
-    try:
+    with session_scope() as db:
         from app.services.ukl_growth_service import ingest_growth_journal_for_record
 
         ingest_growth_journal_for_record(db, event.user_id, record_id)
@@ -288,8 +282,6 @@ def _on_growth_updated(event: DomainEvent) -> None:
 
         if ukl_pattern_service.should_refresh_growth_pattern(db, event.user_id):
             ukl_pattern_service.refresh_growth_pattern_for_user(db, event.user_id)
-    finally:
-        db.close()
 
 
 def _on_milestone_reached(event: DomainEvent) -> None:
@@ -308,13 +300,11 @@ def _on_growth_pattern_updated(event: DomainEvent) -> None:
         event.trace_id,
         event.payload,
     )
-    db = database_module.SessionLocal()
     try:
-        profile_service.apply_growth_pattern_for_user(db, event.user_id)
+        with session_scope() as db:
+            profile_service.apply_growth_pattern_for_user(db, event.user_id)
     except Exception:
         logger.exception("Profile growth pattern reinforcement failed user_id=%s", event.user_id)
-    finally:
-        db.close()
 
 
 def initialize_growth_cycle_orchestrator() -> None:
@@ -334,4 +324,3 @@ def initialize_growth_cycle_orchestrator() -> None:
 
     _INITIALIZED = True
     logger.info("Growth cycle orchestrator initialized")
-

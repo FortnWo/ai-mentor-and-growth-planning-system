@@ -4,8 +4,10 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
+from app.core.ai_worker import submit_ai_task
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.db_session import session_scope
 from app.core.security import get_current_user
 from app.models.action_plan import ActionPlanStatus
 from app.models.user import User
@@ -23,16 +25,15 @@ error_logger = logging.getLogger("ai_mentor.errors")
 
 
 def _process_action_plan_in_background(plan_id: int, user_id: int) -> None:
-    import app.core.database as database_module
-
-    db = database_module.SessionLocal()
     try:
-        plan = plan_service.generate_plan_with_retry(db, user_id, plan_id)
+        with session_scope() as db:
+            plan = plan_service.generate_plan_with_retry(db, user_id, plan_id)
         if not plan:
             error_logger.warning("Action plan generation returned no plan plan_id=%s user_id=%s", plan_id, user_id)
     except ValueError as exc:
         error_logger.warning("Action plan generation failed plan_id=%s user_id=%s error=%s", plan_id, user_id, exc)
-        plan_service.mark_plan_failed(db, plan_id, str(exc))
+        with session_scope() as db:
+            plan_service.mark_plan_failed(db, plan_id, str(exc))
     except Exception as exc:
         error_logger.error(
             "Action plan generation failed plan_id=%s user_id=%s error=%s\n%s",
@@ -41,9 +42,8 @@ def _process_action_plan_in_background(plan_id: int, user_id: int) -> None:
             exc,
             traceback.format_exc(),
         )
-        plan_service.mark_plan_failed(db, plan_id, str(exc))
-    finally:
-        db.close()
+        with session_scope() as db:
+            plan_service.mark_plan_failed(db, plan_id, str(exc))
 
 
 @router.post("", response_model=list[ActionPlanDetailRead], status_code=status.HTTP_202_ACCEPTED)
@@ -72,7 +72,7 @@ def create_action_plan(
 
     prepared = plan_service.prepare_plans_for_goal(db, current_user.id, payload.goal_id, reset_items=False)
     for plan in prepared:
-        background_tasks.add_task(_process_action_plan_in_background, plan.id, current_user.id)
+        submit_ai_task(_process_action_plan_in_background, plan.id, current_user.id)
 
     out: list[ActionPlanDetailRead] = []
     for plan in prepared:
@@ -145,7 +145,7 @@ def refresh_action_plan(
         plan = plan_service.prepare_plan_for_refresh(db, current_user.id, plan_id, reset_items=False)
         if not plan:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action plan not found")
-        background_tasks.add_task(_process_action_plan_in_background, plan.id, current_user.id)
+        submit_ai_task(_process_action_plan_in_background, plan.id, current_user.id)
 
     detail = plan_service.get_plan_detail(db, current_user.id, plan.id)
     if not detail:

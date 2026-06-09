@@ -144,7 +144,8 @@ def test_process_message_in_background_logs_owner_user_id(client, monkeypatch, d
 
     monkeypatch.setattr(chat_service, "build_ai_response", fake_build_ai_response)
 
-    chat_service.process_message_in_background(session.id, "follow up")
+    placeholder = chat_service.create_assistant_placeholder(db_session, session)
+    chat_service.process_message_in_background(session.id, "follow up", placeholder.id)
 
     assert captured["user_id"] == user.id
     row = db_session.query(AIUsageLog).filter(AIUsageLog.user_id == user.id).one()

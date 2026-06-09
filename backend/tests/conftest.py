@@ -42,6 +42,24 @@ bootstrap_module.SessionLocal = TestingSessionLocal
 app_module.engine = engine
 
 
+@pytest.fixture(autouse=True)
+def sync_ai_worker(monkeypatch):
+    """Run queued AI worker tasks inline (after the HTTP request releases DB sessions)."""
+    from concurrent.futures import Future
+
+    import app.core.ai_worker as ai_worker_module
+
+    def submit_sync(fn, /, *args, **kwargs):
+        future: Future = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
+
+    monkeypatch.setattr(ai_worker_module, "submit_ai_task", submit_sync)
+
+
 @pytest.fixture()
 def db_session():
     Base.metadata.drop_all(bind=engine)

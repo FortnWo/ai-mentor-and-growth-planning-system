@@ -237,59 +237,56 @@ def get_growth_record(db: Session, user_id: int, record_id: int) -> GrowthRecord
 
 def process_record_summary_background(record_id: int) -> None:
     # Background worker to generate ai_summary and sentiment using LLM (best-effort)
-    import app.core.database as database_module
+    from app.core.db_session import session_scope
 
-    db = database_module.SessionLocal()
-    try:
+    prompt: str | None = None
+    record_summary: str | None = None
+
+    with session_scope() as db:
         record = db.query(GrowthRecord).filter(GrowthRecord.id == record_id).first()
         if not record:
             return
-
-        # Build prompt asking the model to return a short summary and sentiment as JSON
+        record_summary = record.summary
         prompt = (
             f"Summarize the following user growth record in one concise sentence and return JSON with keys 'summary' and 'sentiment' (one of positive, neutral, negative).\\n"
             f"Content:\nTitle: {record.title}\nSummary: {record.summary or ''}\nContent: {record.content or ''}"
         )
 
-        ai_summary_text = None
-        sentiment = None
-        try:
-            response = chat_service.build_ai_response(prompt)
-            # Try to parse JSON from response
-            import json
+    ai_summary_text = None
+    sentiment = None
+    try:
+        response = chat_service.build_ai_response(prompt)
+        import json
 
-            text = response.strip()
-            try:
-                payload = json.loads(text)
-                ai_summary_text = payload.get("summary") if isinstance(payload, dict) else None
-                sentiment = payload.get("sentiment") if isinstance(payload, dict) else None
-            except Exception:
-                # fallback: use whole response as summary and simple sentiment rules
-                ai_summary_text = text
+        text = response.strip()
+        try:
+            payload = json.loads(text)
+            ai_summary_text = payload.get("summary") if isinstance(payload, dict) else None
+            sentiment = payload.get("sentiment") if isinstance(payload, dict) else None
         except Exception:
-            # LLM failed; leave ai_summary_text None
-            ai_summary_text = None
+            ai_summary_text = text
+    except Exception:
+        ai_summary_text = None
 
-        if not sentiment:
-            # simple sentiment heuristic
-            stext = (ai_summary_text or record.summary or "").lower()
-            if any(w in stext for w in ["good", "great", "progress", "completed", "done", "happy", "proud", "yay"]):
-                sentiment = "positive"
-            elif any(w in stext for w in ["not", "failed", "bad", "sad", "missed"]):
-                sentiment = "negative"
-            else:
-                sentiment = "neutral"
+    if not sentiment:
+        stext = (ai_summary_text or record_summary or "").lower()
+        if any(w in stext for w in ["good", "great", "progress", "completed", "done", "happy", "proud", "yay"]):
+            sentiment = "positive"
+        elif any(w in stext for w in ["not", "failed", "bad", "sad", "missed"]):
+            sentiment = "negative"
+        else:
+            sentiment = "neutral"
 
-        # write back into record
-        try:
+    try:
+        with session_scope() as db:
+            record = db.query(GrowthRecord).filter(GrowthRecord.id == record_id).first()
+            if not record:
+                return
             record.ai_summary = ai_summary_text
             record.emotion = sentiment
             db.add(record)
-            db.commit()
-        except SQLAlchemyError:
-            db.rollback()
-    finally:
-        db.close()
+    except SQLAlchemyError:
+        pass
 
 
 def _stats_from_raw_records(

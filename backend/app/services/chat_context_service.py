@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-import threading
 
 from sqlalchemy.orm import Session
 
+from app.core.ai_worker import submit_ai_task
 from app.core.config import settings
+from app.core.db_session import session_scope
 from app.core.ukl_constants import PROFILE_FIELD_NAMES, SCENE_CHAT
 from app.models.chat import ChatMessage, MessageRole
 from app.models.chat_session_summary import ChatSessionSummary
@@ -83,18 +84,13 @@ def build_legacy_chat_context(
 
 def _schedule_lazy_profile_ingest(user_id: int) -> None:
     def _run() -> None:
-        import app.core.database as database_module
-
-        db = database_module.SessionLocal()
         try:
-            ukl_service.ingest_profile_from_user(db, user_id)
-            db.commit()
+            with session_scope() as db:
+                ukl_service.ingest_profile_from_user(db, user_id)
         except Exception:
             logger.exception("UKL lazy profile ingest failed user_id=%s", user_id)
-        finally:
-            db.close()
 
-    threading.Thread(target=_run, daemon=True).start()
+    submit_ai_task(_run)
 
 
 def _build_profile_section(
@@ -224,17 +220,16 @@ def update_session_summary(db: Session, *, session_id: int, user_id: int) -> Cha
         return existing
 
     prior = (existing.summary or "").strip() if existing else None
+    last_id = new_messages[-1].id
+    total_archived = len(archive_candidates)
+
     merged_summary = ai_service.build_session_summary_response(
         prior,
         new_dialogue,
-        db=db,
         user_id=user_id,
     ).strip()
     if not merged_summary:
         return existing
-
-    last_id = new_messages[-1].id
-    total_archived = len(archive_candidates)
 
     if existing:
         existing.summary = merged_summary
@@ -263,18 +258,15 @@ def _schedule_episodic_narrative_ingest(user_id: int) -> None:
         return
 
     def _run() -> None:
-        import app.core.database as database_module
         from app.services import ukl_narrative_service
 
-        db = database_module.SessionLocal()
         try:
-            ukl_narrative_service.ingest_episodic_narrative_for_user(db, user_id)
+            with session_scope() as db:
+                ukl_narrative_service.ingest_episodic_narrative_for_user(db, user_id)
         except Exception:
             logger.exception("Episodic narrative ingest failed user_id=%s", user_id)
-        finally:
-            db.close()
 
-    threading.Thread(target=_run, daemon=True).start()
+    submit_ai_task(_run)
 
 
 def schedule_session_summary_update(session_id: int, user_id: int) -> None:
@@ -282,15 +274,10 @@ def schedule_session_summary_update(session_id: int, user_id: int) -> None:
         return
 
     def _run() -> None:
-        import app.core.database as database_module
-
-        db = database_module.SessionLocal()
         try:
-            update_session_summary(db, session_id=session_id, user_id=user_id)
-            db.commit()
+            with session_scope() as db:
+                update_session_summary(db, session_id=session_id, user_id=user_id)
         except Exception:
             logger.exception("Session summary update failed session_id=%s", session_id)
-        finally:
-            db.close()
 
-    threading.Thread(target=_run, daemon=True).start()
+    submit_ai_task(_run)

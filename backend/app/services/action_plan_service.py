@@ -1,13 +1,14 @@
 import json
 import logging
-import threading
 import time
 from datetime import date, datetime
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.ai_worker import submit_ai_task
 from app.core.config import settings
+from app.core.db_session import session_scope
 from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.models.action_plan import ActionPlan, ActionPlanFrequency, ActionPlanItem, ActionPlanStatus
@@ -37,8 +38,6 @@ def _schedule_item_completion_side_effects(
     """Run UKL ingest, domain events, and milestone finalize off the request thread."""
 
     def _run() -> None:
-        import app.core.database as database_module
-
         try:
             if growth_record_id is not None:
                 event_bus.publish(
@@ -66,11 +65,8 @@ def _schedule_item_completion_side_effects(
             if pending_milestones:
                 milestone_service.finalize_milestones_after_commit(user_id, pending_milestones)
 
-            db = database_module.SessionLocal()
-            try:
+            with session_scope() as db:
                 maybe_sync_execution_slices(db, user_id, goal_id=goal_id)
-            finally:
-                db.close()
         except Exception:
             logger.exception(
                 "Item completion side effects failed user_id=%s plan_id=%s",
@@ -79,7 +75,7 @@ def _schedule_item_completion_side_effects(
             )
 
     if settings.ACTION_PLAN_COMPLETION_ASYNC:
-        threading.Thread(target=_run, daemon=True).start()
+        submit_ai_task(_run)
     else:
         _run()
 
@@ -133,28 +129,42 @@ def get_plan_detail(db: Session, user_id: int, plan_id: int) -> ActionPlanDetail
 
 
 def refresh_action_plan(db: Session, user_id: int, plan_id: int) -> ActionPlan | None:
-    plan = get_action_plan_for_user(db, user_id, plan_id)
-    if not plan:
-        return None
+    from app.core.db_session import session_scope
+    from app.services import chat_service
 
-    goal = _get_goal_for_user(db, user_id, plan.goal_id)
-    if not goal:
-        return None
+    prompt: str | None = None
+    with session_scope() as read_db:
+        plan = get_action_plan_for_user(read_db, user_id, plan_id)
+        if not plan:
+            return None
 
-    main_node = (
-        db.query(GoalBreakdown)
-        .filter(GoalBreakdown.id == plan.main_breakdown_id, GoalBreakdown.goal_id == goal.id)
-        .first()
-    )
-    if not main_node:
-        raise ValueError("Action plan is missing its main breakdown node")
+        goal = _get_goal_for_user(read_db, user_id, plan.goal_id)
+        if not goal:
+            return None
 
-    raw_response = _generate_action_plan_response_for_main(db, goal, main_node)
+        main_node = (
+            read_db.query(GoalBreakdown)
+            .filter(GoalBreakdown.id == plan.main_breakdown_id, GoalBreakdown.goal_id == goal.id)
+            .first()
+        )
+        if not main_node:
+            raise ValueError("Action plan is missing its main breakdown node")
+
+        prompt = _read_action_plan_prompt(read_db, goal, main_node)
+
+    raw_response = chat_service.build_action_plan_response(prompt)
     payload = parse_action_plan_response(raw_response)
     if payload is None:
         raise ValueError("AI output is not valid JSON")
 
-    return _upsert_action_plan(db, goal, payload, existing_plan=plan)
+    with session_scope() as write_db:
+        plan = get_action_plan_for_user(write_db, user_id, plan_id)
+        if not plan:
+            return None
+        goal = _get_goal_for_user(write_db, user_id, plan.goal_id)
+        if not goal:
+            return None
+        return _upsert_action_plan(write_db, goal, payload, existing_plan=plan)
 
 
 def generate_action_plan_with_retry(
@@ -184,23 +194,21 @@ def _get_goal_for_user(db: Session, user_id: int, goal_id: int) -> Goal | None:
     return db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user_id).first()
 
 
-def _generate_action_plan_response_for_main(db: Session, goal: Goal, main_node: GoalBreakdown) -> str:
-    from app.services import chat_service, profile_service, ukl_prompt_service
+def _read_action_plan_prompt(db: Session, goal: Goal, main_node: GoalBreakdown) -> str:
+    from app.services import profile_service, ukl_prompt_service
 
     secondary = _list_secondary_breakdowns_for_main(db, main_node.id)
     today_iso = date.today().isoformat()
     if settings.UKL_ENABLED:
-        prompt = ukl_prompt_service.build_action_plan_prompt_for_main(
+        return ukl_prompt_service.build_action_plan_prompt_for_main(
             db,
             goal,
             main_node,
             secondary,
             today_iso,
         )
-    else:
-        profile = profile_service.get_profile_for_user(db, goal.user_id)
-        prompt = _build_action_plan_prompt_for_main(goal, main_node, secondary, profile, today_iso)
-    return chat_service.build_action_plan_response(prompt)
+    profile = profile_service.get_profile_for_user(db, goal.user_id)
+    return _build_action_plan_prompt_for_main(goal, main_node, secondary, profile, today_iso)
 
 
 def _list_secondary_breakdowns_for_main(db: Session, main_id: int) -> list[GoalBreakdown]:

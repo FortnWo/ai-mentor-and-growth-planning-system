@@ -3,7 +3,9 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
+from app.core.ai_worker import submit_ai_task
 from app.core.database import get_db
+from app.core.db_session import session_scope
 from app.core.domain_events import DomainEventName
 from app.core.event_bus import event_bus
 from app.core.security import get_current_user
@@ -50,7 +52,7 @@ def create_record(payload: GrowthRecordCreate, background_tasks: BackgroundTasks
     )
     # schedule background summary generation (best-effort, non-blocking)
     try:
-        background_tasks.add_task(growth_service.process_record_summary_background, record.id)
+        submit_ai_task(growth_service.process_record_summary_background, record.id)
     except Exception:
         pass
     return GrowthRecordRead.model_validate(record)
@@ -102,14 +104,10 @@ def generate_weekly_summary(payload: GrowthSummaryCreate, background_tasks: Back
     # schedule background generation to avoid blocking
     try:
         def _worker(u_id: int, s, e):
-            import app.core.database as database_module
-            db_local = database_module.SessionLocal()
-            try:
+            with session_scope() as db_local:
                 growth_service.create_weekly_summary(db_local, u_id, s, e)
-            finally:
-                db_local.close()
 
-        background_tasks.add_task(_worker, current_user.id, payload.start_date, payload.end_date)
+        submit_ai_task(_worker, current_user.id, payload.start_date, payload.end_date)
     except Exception:
         pass
 

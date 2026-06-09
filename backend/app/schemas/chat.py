@@ -13,6 +13,7 @@ class MessageDeliveryStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ChatSessionBase(BaseModel):
