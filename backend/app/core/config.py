@@ -100,6 +100,32 @@ class Settings(BaseSettings):
         "写一段 2-4 句的中文周总结，肯定进步并给出下周可执行的小步建议。"
         "语气亲切、具体、有证据；不要编造；不要输出 markdown 或标题。"
     )
+    MILESTONE_UKL_ENABLED: bool = True
+    INSTANT_FEEDBACK_ENABLED: bool = True
+    INSTANT_FEEDBACK_SYSTEM_PROMPT: str = (
+        "你是温暖的成长导师。用户刚达成一个里程碑节点，请用 1-2 句中文祝贺并点出具体进步。"
+        "语气真诚、简短；不要输出 markdown 或标题；不要编造未给出的细节。"
+    )
+    GROWTH_PATTERN_ENABLED: bool = True
+    GROWTH_PATTERN_CHECKIN_THRESHOLD: int = 5
+    GROWTH_PATTERN_MIN_DAYS: int = 7
+    GROWTH_PATTERN_SYSTEM_PROMPT: str = (
+        "你是成长模式分析助手。根据用户近期的成长记录与打卡数据，"
+        "归纳 2-4 个主题词、整体情绪趋势（积极/平稳/波动）、坚持度观察，"
+        "并输出 100-200 字中文叙事摘要。不要输出 JSON 或 markdown。"
+    )
+    EPISODIC_NARRATIVE_ENABLED: bool = True
+    GOAL_INTENT_ENABLED: bool = True
+    EPISODIC_NARRATIVE_SYSTEM_PROMPT: str = (
+        "你是跨会话记忆助手。合并用户近期会话摘要与已有跨会话叙事，"
+        "输出 150-250 字中文连贯叙事，保留关键事实与进展线索。"
+        "不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
+    )
+    GOAL_INTENT_SYSTEM_PROMPT: str = (
+        "你是目标动机分析助手。根据目标标题与描述，用 80-150 字中文概括用户的核心动机与期望。"
+        "不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
+    )
+    ACTION_PLAN_COMPLETION_ASYNC: bool = True
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
     AUTH_ALGORITHM: str = "HS256"

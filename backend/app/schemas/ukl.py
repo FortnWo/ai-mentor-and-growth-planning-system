@@ -63,6 +63,41 @@ class FeedbackAnchorsPayload(BaseModel):
     week_end: str | None = None
 
 
+class MilestoneAchievementPayload(BaseModel):
+    goal_id: int
+    breakdown_id: int
+    milestone_level: str
+    title: str
+    narrative: str
+
+
+class GrowthPatternPayload(BaseModel):
+    themes: list[str] = Field(default_factory=list)
+    emotion_trend: str | None = None
+    checkin_count: int = 0
+    reflection_count: int = 0
+    period_start: str | None = None
+    period_end: str | None = None
+    narrative: str | None = None
+
+
+class WeeklyNarrativePayload(BaseModel):
+    week_start: str
+    week_end: str
+    narrative: str
+
+
+class EpisodicNarrativePayload(BaseModel):
+    summary: str
+    updated_at: datetime | None = None
+
+
+class GoalIntentPayload(BaseModel):
+    goal_id: int
+    summary: str | None = None
+    intent: str | None = None
+
+
 class ContextBundle(BaseModel):
     scene: str
     narrative_blocks: list[str] = Field(default_factory=list)

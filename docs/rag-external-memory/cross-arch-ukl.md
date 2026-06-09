@@ -227,7 +227,7 @@ ON_MILESTONE_REACHED:    # 建议新增
 | **UKL1** | 已完成 | `chat_session_summary`、`build_chat_context`、聊天主路径注意力打包 |
 | **UKL2** | 已完成 | `scene=breakdown`/`action_plan`、拆解 UKL 切片、行动计划覆盖校验 |
 | **UKL3** | 已完成 | execution 切片 ingest、`scene=feedback`、growth_journal、周总结 UKL 路径 |
-| **UKL4** | 待开始 | milestone、growth_pattern、A2 叙事固化 |
+| **UKL4** | 已完成 | milestone 实体与 `milestone_achievement`、`growth_pattern`/`weekly_narrative`、A2 叙事固化、D 批量补强、`scene=instant_feedback` |
 | **UKL5** | 待开始 | A3 向量与 Tier2 门控 |
 
 ## 十三、待实现时细化的项

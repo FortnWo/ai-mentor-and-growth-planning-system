@@ -156,6 +156,13 @@ def _on_goal_detected(event: DomainEvent) -> None:
             logger.warning("Failed to apply goal breakdown for goal_id=%s", goal_id)
             return
 
+        try:
+            from app.services import ukl_narrative_service
+
+            ukl_narrative_service.ingest_goal_intent_for_goal(db, event.user_id, goal_id)
+        except Exception:
+            logger.exception("Goal intent ingest failed goal_id=%s", goal_id)
+
         _publish_followup_event(
             DomainEventName.ON_GOAL_BREAKDOWN,
             source_event=event,
@@ -276,6 +283,36 @@ def _on_growth_updated(event: DomainEvent) -> None:
         from app.services.ukl_growth_service import ingest_growth_journal_for_record
 
         ingest_growth_journal_for_record(db, event.user_id, record_id)
+
+        from app.services import ukl_pattern_service
+
+        if ukl_pattern_service.should_refresh_growth_pattern(db, event.user_id):
+            ukl_pattern_service.refresh_growth_pattern_for_user(db, event.user_id)
+    finally:
+        db.close()
+
+
+def _on_milestone_reached(event: DomainEvent) -> None:
+    logger.info(
+        "Milestone reached user_id=%s trace_id=%s payload=%s",
+        event.user_id,
+        event.trace_id,
+        event.payload,
+    )
+
+
+def _on_growth_pattern_updated(event: DomainEvent) -> None:
+    logger.info(
+        "Growth pattern updated user_id=%s trace_id=%s payload=%s",
+        event.user_id,
+        event.trace_id,
+        event.payload,
+    )
+    db = database_module.SessionLocal()
+    try:
+        profile_service.apply_growth_pattern_for_user(db, event.user_id)
+    except Exception:
+        logger.exception("Profile growth pattern reinforcement failed user_id=%s", event.user_id)
     finally:
         db.close()
 
@@ -292,6 +329,8 @@ def initialize_growth_cycle_orchestrator() -> None:
     event_bus.subscribe(DomainEventName.ON_ACTION_GENERATED.value, _on_action_generated)
     event_bus.subscribe(DomainEventName.ON_ACTION_COMPLETED.value, _on_action_completed)
     event_bus.subscribe(DomainEventName.ON_GROWTH_UPDATED.value, _on_growth_updated)
+    event_bus.subscribe(DomainEventName.ON_MILESTONE_REACHED.value, _on_milestone_reached)
+    event_bus.subscribe(DomainEventName.ON_GROWTH_PATTERN_UPDATED.value, _on_growth_pattern_updated)
 
     _INITIALIZED = True
     logger.info("Growth cycle orchestrator initialized")

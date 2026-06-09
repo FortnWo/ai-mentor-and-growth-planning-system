@@ -40,6 +40,28 @@ def create_weekly_summary(db: Session, user_id: int, start_date: date, end_date:
     db.add(summary)
     db.commit()
     db.refresh(summary)
+
+    if settings.UKL_ENABLED:
+        try:
+            from app.services import ukl_pattern_service
+
+            ukl_pattern_service.ingest_weekly_narrative(
+                db, user_id, start_date, end_date, summary_text
+            )
+            ukl_pattern_service.refresh_growth_pattern_for_user(
+                db,
+                user_id,
+                period_start=start_date,
+                period_end=end_date,
+                force=True,
+            )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "UKL weekly narrative/pattern ingest failed user_id=%s", user_id
+            )
+
     return summary
 
 

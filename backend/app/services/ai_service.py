@@ -335,6 +335,49 @@ def build_weekly_summary_response(message: str) -> str:
     )
 
 
+def build_instant_feedback_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="instant feedback",
+        message=message,
+        instructions=settings.INSTANT_FEEDBACK_SYSTEM_PROMPT,
+    )
+
+
+def build_milestone_achievement_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="milestone achievement",
+        message=message,
+        instructions=(
+            "你是成长叙事助手。用 80-150 字中文描述用户达成该里程碑的意义与进展。"
+            "不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
+        ),
+    )
+
+
+def build_growth_pattern_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="growth pattern",
+        message=message,
+        instructions=settings.GROWTH_PATTERN_SYSTEM_PROMPT,
+    )
+
+
+def build_episodic_narrative_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="episodic narrative",
+        message=message,
+        instructions=settings.EPISODIC_NARRATIVE_SYSTEM_PROMPT,
+    )
+
+
+def build_goal_intent_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="goal intent",
+        message=message,
+        instructions=settings.GOAL_INTENT_SYSTEM_PROMPT,
+    )
+
+
 def build_action_plan_response(message: str) -> str:
     return _invoke_ai(
         task_name="action plan",

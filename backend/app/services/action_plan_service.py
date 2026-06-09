@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import time
 from datetime import date, datetime
 
@@ -14,11 +15,73 @@ from app.models.goal import Goal, GoalBreakdown, GoalBreakdownStatus
 from app.models.profile import UserProfile
 from app.schemas.action_plan import ActionPlanDetailRead
 from app.models.growth_record import GrowthRecordType, GrowthRecordSource
+from app.services import milestone_service
+from app.services.milestone_service import MilestoneFinalizeInfo
 from app.services.goal_breakdown_utils import list_main_breakdown_nodes
 from app.services.growth_record_service import create_growth_record, void_growth_record_by_idempotency_key
 from app.services.ukl_execution_service import maybe_sync_execution_slices
 
 logger = logging.getLogger(__name__)
+
+
+def _schedule_item_completion_side_effects(
+    user_id: int,
+    *,
+    plan_id: int,
+    goal_id: int,
+    growth_record_id: int | None,
+    item_title: str,
+    item_sequence: int,
+    pending_milestones: list[MilestoneFinalizeInfo],
+) -> None:
+    """Run UKL ingest, domain events, and milestone finalize off the request thread."""
+
+    def _run() -> None:
+        import app.core.database as database_module
+
+        try:
+            if growth_record_id is not None:
+                event_bus.publish(
+                    event_name=DomainEventName.ON_ACTION_COMPLETED.value,
+                    user_id=user_id,
+                    payload={
+                        "plan_id": plan_id,
+                        "goal_id": goal_id,
+                        "plan_item_title": item_title,
+                        "plan_item_sequence": item_sequence,
+                    },
+                    fail_fast=False,
+                )
+                event_bus.publish(
+                    event_name=DomainEventName.ON_GROWTH_UPDATED.value,
+                    user_id=user_id,
+                    payload={
+                        "record_id": growth_record_id,
+                        "record_type": GrowthRecordType.ACTION_PLAN.value,
+                        "source_type": GrowthRecordSource.ACTION_PLAN.value,
+                        "source": "action_plan_completion",
+                    },
+                    fail_fast=False,
+                )
+            if pending_milestones:
+                milestone_service.finalize_milestones_after_commit(user_id, pending_milestones)
+
+            db = database_module.SessionLocal()
+            try:
+                maybe_sync_execution_slices(db, user_id, goal_id=goal_id)
+            finally:
+                db.close()
+        except Exception:
+            logger.exception(
+                "Item completion side effects failed user_id=%s plan_id=%s",
+                user_id,
+                plan_id,
+            )
+
+    if settings.ACTION_PLAN_COMPLETION_ASYNC:
+        threading.Thread(target=_run, daemon=True).start()
+    else:
+        _run()
 
 
 def get_action_plan_for_user(db: Session, user_id: int, plan_id: int) -> ActionPlan | None:
@@ -281,7 +344,12 @@ def _validate_secondary_coverage(
     return missing
 
 
-def _sync_aggregate_plan_and_main_status(db: Session, plan: ActionPlan) -> None:
+def _sync_aggregate_plan_and_main_status(
+    db: Session,
+    plan: ActionPlan,
+    *,
+    pending_milestones: list[MilestoneFinalizeInfo] | None = None,
+) -> None:
     items = (
         db.query(ActionPlanItem)
         .filter(ActionPlanItem.plan_id == plan.id)
@@ -299,8 +367,12 @@ def _sync_aggregate_plan_and_main_status(db: Session, plan: ActionPlan) -> None:
     else:
         plan.status = ActionPlanStatus.PENDING.value
 
+    goal = db.query(Goal).filter(Goal.id == plan.goal_id).first()
+    user_id = goal.user_id if goal else None
+
     bd = db.query(GoalBreakdown).filter(GoalBreakdown.id == plan.main_breakdown_id).first()
     if bd:
+        old_main_status = bd.status
         if total == 0:
             pass
         elif completed == total:
@@ -310,8 +382,22 @@ def _sync_aggregate_plan_and_main_status(db: Session, plan: ActionPlan) -> None:
         else:
             bd.status = GoalBreakdownStatus.PENDING.value
         db.add(bd)
+        if user_id:
+            info = milestone_service.handle_breakdown_status_transition(
+                db,
+                user_id,
+                bd,
+                old_main_status,
+                bd.status,
+                plan_id=plan.id,
+                main_breakdown_id=plan.main_breakdown_id,
+            )
+            if info and pending_milestones is not None:
+                pending_milestones.append(info)
 
-    _sync_secondary_breakdown_statuses(db, plan, items)
+    _sync_secondary_breakdown_statuses(
+        db, plan, items, user_id=user_id, pending_milestones=pending_milestones
+    )
     db.add(plan)
 
 
@@ -319,6 +405,9 @@ def _sync_secondary_breakdown_statuses(
     db: Session,
     plan: ActionPlan,
     items: list[ActionPlanItem],
+    *,
+    user_id: int | None = None,
+    pending_milestones: list[MilestoneFinalizeInfo] | None = None,
 ) -> None:
     """Soft-aggregate branch node status from linked action plan items."""
     secondary_nodes = _list_secondary_breakdowns_for_main(db, plan.main_breakdown_id)
@@ -329,6 +418,7 @@ def _sync_secondary_breakdown_statuses(
         linked = [item for item in items if item.breakdown_id == node.id]
         if not linked:
             continue
+        old_status = node.status
         completed = sum(1 for item in linked if item.status == ActionPlanStatus.COMPLETED.value)
         if completed == len(linked):
             node.status = GoalBreakdownStatus.COMPLETED.value
@@ -337,6 +427,18 @@ def _sync_secondary_breakdown_statuses(
         else:
             node.status = GoalBreakdownStatus.PENDING.value
         db.add(node)
+        if user_id:
+            info = milestone_service.handle_breakdown_status_transition(
+                db,
+                user_id,
+                node,
+                old_status,
+                node.status,
+                plan_id=plan.id,
+                main_breakdown_id=plan.main_breakdown_id,
+            )
+            if info and pending_milestones is not None:
+                pending_milestones.append(info)
 
 
 def _upsert_action_plan(
@@ -736,6 +838,8 @@ def update_action_plan_item_completion(
         return None
 
     idem = f"action-plan-item-{item_id}-completed"
+    growth_record_id: int | None = None
+    pending_milestones: list[MilestoneFinalizeInfo] = []
 
     if completed:
         item.status = ActionPlanStatus.COMPLETED.value
@@ -761,28 +865,7 @@ def update_action_plan_item_completion(
             commit=False,
             refresh=False,
         )
-        event_bus.publish(
-            event_name=DomainEventName.ON_ACTION_COMPLETED.value,
-            user_id=user_id,
-            payload={
-                "plan_id": plan_id,
-                "goal_id": item.plan.goal_id,
-                "plan_item_title": item.title,
-                "plan_item_sequence": item.sequence,
-            },
-            fail_fast=False,
-        )
-        event_bus.publish(
-            event_name=DomainEventName.ON_GROWTH_UPDATED.value,
-            user_id=user_id,
-            payload={
-                "record_id": growth_record.id,
-                "record_type": growth_record.record_type,
-                "source_type": growth_record.source_type,
-                "source": "action_plan_completion",
-            },
-            fail_fast=False,
-        )
+        growth_record_id = growth_record.id
     else:
         item.status = ActionPlanStatus.PENDING.value
         void_growth_record_by_idempotency_key(db, user_id, idem, commit=False)
@@ -791,9 +874,21 @@ def update_action_plan_item_completion(
     db.flush()
     plan_row = db.query(ActionPlan).filter(ActionPlan.id == plan_id).first()
     if plan_row:
-        _sync_aggregate_plan_and_main_status(db, plan_row)
+        _sync_aggregate_plan_and_main_status(
+            db, plan_row, pending_milestones=pending_milestones
+        )
     db.commit()
     db.refresh(item)
-    if plan_row:
-        maybe_sync_execution_slices(db, user_id, goal_id=plan_row.goal_id)
+
+    if completed:
+        _schedule_item_completion_side_effects(
+            user_id,
+            plan_id=plan_id,
+            goal_id=item.plan.goal_id,
+            growth_record_id=growth_record_id,
+            item_title=item.title,
+            item_sequence=item.sequence,
+            pending_milestones=pending_milestones,
+        )
+
     return item

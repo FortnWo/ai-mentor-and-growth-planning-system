@@ -14,7 +14,17 @@ from app.services import ai_service, profile_service, ukl_service
 logger = logging.getLogger(__name__)
 
 _PROFILE_SECTION_HEADER = "[用户画像]"
+_EPISODIC_SECTION_HEADER = "[跨会话记忆]"
 _SESSION_SUMMARY_HEADER = "[本会话Earlier摘要]"
+
+_EPISODIC_KEYWORDS = ("之前", "记得", "进度", "上次", "以前", "延续")
+
+
+def should_include_episodic_extra(query: str) -> bool:
+    text = (query or "").strip()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _EPISODIC_KEYWORDS)
 
 
 def _role_to_value(role: MessageRole | str) -> str:
@@ -87,12 +97,28 @@ def _schedule_lazy_profile_ingest(user_id: int) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _build_profile_section(db: Session, user_id: int) -> str | None:
+def _build_profile_section(
+    db: Session,
+    user_id: int,
+    *,
+    current_user_message: str = "",
+) -> str | None:
     bundle = ukl_service.assemble_context(db, user_id, SCENE_CHAT)
     narrative = "\n".join(block.strip() for block in bundle.narrative_blocks if block and block.strip()).strip()
 
+    sections: list[str] = []
     if narrative:
-        return f"{_PROFILE_SECTION_HEADER}\n{narrative}"
+        sections.append(f"{_PROFILE_SECTION_HEADER}\n{narrative}")
+
+    episodic = bundle.anchors.get("episodic_narrative")
+    episodic_text = ""
+    if isinstance(episodic, dict):
+        episodic_text = str(episodic.get("summary") or "").strip()
+    if episodic_text and should_include_episodic_extra(current_user_message):
+        sections.append(f"{_EPISODIC_SECTION_HEADER}\n{episodic_text}")
+
+    if sections:
+        return "\n\n".join(sections)
 
     profile = profile_service.get_or_create_profile_for_user(db, user_id)
     fallback_parts: list[str] = []
@@ -136,7 +162,9 @@ def build_chat_context(
 
     sections: list[str] = []
 
-    profile_section = _build_profile_section(db, user_id)
+    profile_section = _build_profile_section(
+        db, user_id, current_user_message=current_user_message
+    )
     if profile_section:
         sections.append(profile_section)
 
@@ -214,6 +242,7 @@ def update_session_summary(db: Session, *, session_id: int, user_id: int) -> Cha
         existing.message_count = total_archived
         db.add(existing)
         db.flush()
+        _schedule_episodic_narrative_ingest(user_id)
         return existing
 
     row = ChatSessionSummary(
@@ -225,7 +254,27 @@ def update_session_summary(db: Session, *, session_id: int, user_id: int) -> Cha
     )
     db.add(row)
     db.flush()
+    _schedule_episodic_narrative_ingest(user_id)
     return row
+
+
+def _schedule_episodic_narrative_ingest(user_id: int) -> None:
+    if not settings.UKL_ENABLED or not settings.EPISODIC_NARRATIVE_ENABLED:
+        return
+
+    def _run() -> None:
+        import app.core.database as database_module
+        from app.services import ukl_narrative_service
+
+        db = database_module.SessionLocal()
+        try:
+            ukl_narrative_service.ingest_episodic_narrative_for_user(db, user_id)
+        except Exception:
+            logger.exception("Episodic narrative ingest failed user_id=%s", user_id)
+        finally:
+            db.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def schedule_session_summary_update(session_id: int, user_id: int) -> None:

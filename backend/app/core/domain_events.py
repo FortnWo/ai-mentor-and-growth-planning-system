@@ -15,6 +15,8 @@ class DomainEventName(str, Enum):
     ON_ACTION_GENERATED = "on_action_generated"
     ON_ACTION_COMPLETED = "on_action_completed"
     ON_GROWTH_UPDATED = "on_growth_updated"
+    ON_MILESTONE_REACHED = "on_milestone_reached"
+    ON_GROWTH_PATTERN_UPDATED = "on_growth_pattern_updated"
 
 
 @dataclass(slots=True, frozen=True)

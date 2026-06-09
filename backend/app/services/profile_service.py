@@ -138,6 +138,118 @@ def _maybe_sync_profile_to_ukl(db: Session, user_id: int) -> None:
         logger.exception("UKL profile ingest failed user_id=%s", user_id)
 
 
+def apply_growth_pattern_for_user(db: Session, user_id: int) -> None:
+    if not settings.UKL_ENABLED or not settings.GROWTH_PATTERN_ENABLED:
+        return
+
+    try:
+        from app.core.ukl_constants import REF_TYPE_USER, SLICE_TYPE_GROWTH_PATTERN
+        from app.schemas.ukl import GrowthPatternPayload
+        from app.services import ukl_service
+
+        row = ukl_service.get_latest_slice(
+            db,
+            user_id,
+            SLICE_TYPE_GROWTH_PATTERN,
+            ref_type=REF_TYPE_USER,
+            ref_id=user_id,
+        )
+        if row is None or not row.payload:
+            return
+
+        import json
+
+        raw = json.loads(row.payload)
+        pattern = GrowthPatternPayload.model_validate(raw)
+
+        profile = get_or_create_profile_for_user(db, user_id)
+        observed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        if pattern.checkin_count >= settings.GROWTH_PATTERN_CHECKIN_THRESHOLD:
+            _upsert_pattern_trait(
+                db,
+                user_id,
+                trait_type="study_habit",
+                trait_key="坚持打卡",
+                source="growth_pattern",
+                observed_at=observed_at,
+            )
+            habits = list(profile.study_habits or [])
+            if "坚持打卡" not in habits:
+                profile.study_habits = habits + ["坚持打卡"]
+
+        if pattern.emotion_trend == "积极":
+            _upsert_pattern_trait(
+                db,
+                user_id,
+                trait_type="personality",
+                trait_key="积极乐观",
+                source="growth_pattern",
+                observed_at=observed_at,
+            )
+            personality = list(profile.personality or [])
+            if "积极乐观" not in personality:
+                profile.personality = personality + ["积极乐观"]
+
+        for theme in (pattern.themes or [])[:3]:
+            theme_key = str(theme).strip()
+            if not theme_key:
+                continue
+            _upsert_pattern_trait(
+                db,
+                user_id,
+                trait_type="interest",
+                trait_key=theme_key,
+                source="growth_pattern",
+                observed_at=observed_at,
+            )
+
+        db.add(profile)
+        db.flush()
+        refresh_portrait_summary_for_user(db, user_id)
+    except Exception:
+        logger.exception("Growth pattern profile reinforcement failed user_id=%s", user_id)
+
+
+def _upsert_pattern_trait(
+    db: Session,
+    user_id: int,
+    *,
+    trait_type: str,
+    trait_key: str,
+    source: str,
+    observed_at: datetime,
+) -> None:
+    trait = (
+        db.query(UserTrait)
+        .filter(
+            UserTrait.user_id == user_id,
+            UserTrait.trait_type == trait_type,
+            UserTrait.trait_key == trait_key,
+        )
+        .first()
+    )
+    if trait is None:
+        trait = UserTrait(
+            user_id=user_id,
+            trait_type=trait_type,
+            trait_key=trait_key,
+            trait_score=1.0,
+            source=source,
+            confidence=0.6,
+            last_observed_at=observed_at,
+            trait_value=json.dumps({"label": trait_key}, ensure_ascii=False),
+        )
+    else:
+        current_score = float(trait.trait_score or 1.0)
+        trait.trait_score = min(current_score + 0.05, 10.0)
+        trait.source = source
+        trait.confidence = min(float(trait.confidence or 0.6) + 0.05, 0.9)
+        trait.last_observed_at = observed_at
+
+    db.add(trait)
+
+
 def _llm_summary_enabled() -> bool:
     return bool(settings.LLM_API_KEY and settings.LLM_API_BASE_URL and settings.LLM_MODEL)
 

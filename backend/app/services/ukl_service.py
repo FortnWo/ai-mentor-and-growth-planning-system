@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.ukl_constants import (
     FEEDBACK_MAX_ACTIVE_GOALS,
     PROFILE_FIELD_NAMES,
+    REF_TYPE_BREAKDOWN,
     REF_TYPE_GOAL,
     REF_TYPE_RECORD,
     REF_TYPE_USER,
@@ -17,12 +18,17 @@ from app.core.ukl_constants import (
     SCENE_BREAKDOWN,
     SCENE_CHAT,
     SCENE_FEEDBACK,
+    SCENE_INSTANT_FEEDBACK,
     SLICE_TYPE_BREAKDOWN_ANCHORS,
     SLICE_TYPE_BREAKDOWN_SUMMARY,
+    SLICE_TYPE_EPISODIC_NARRATIVE,
     SLICE_TYPE_EXECUTION_FEEDBACK,
     SLICE_TYPE_GOAL_INTENT,
     SLICE_TYPE_GROWTH_JOURNAL,
+    SLICE_TYPE_GROWTH_PATTERN,
+    SLICE_TYPE_MILESTONE_ACHIEVEMENT,
     SLICE_TYPE_PROFILE,
+    SLICE_TYPE_WEEKLY_NARRATIVE,
     SLICE_TYPE_WORKLOAD_SNAPSHOT,
     SOURCE_MODULE_PROFILE,
 )
@@ -34,11 +40,15 @@ from app.schemas.ukl import (
     BreakdownAnchorsPayload,
     BreakdownSummaryPayload,
     ContextBundle,
+    EpisodicNarrativePayload,
     ExecutionFeedbackPayload,
     FeedbackAnchorsPayload,
     GrowthJournalPayload,
+    GrowthPatternPayload,
+    MilestoneAchievementPayload,
     ProfileSlicePayload,
     TraitSnapshot,
+    WeeklyNarrativePayload,
     WorkloadSnapshotPayload,
 )
 from app.services import profile_service, trait_service, ukl_projection_service
@@ -271,20 +281,59 @@ def _list_week_records(
     )
 
 
+def _load_growth_pattern_light(db: Session, user_id: int) -> GrowthPatternPayload | None:
+    raw = _optional_slice_payload(
+        db,
+        user_id,
+        SLICE_TYPE_GROWTH_PATTERN,
+        ref_type=REF_TYPE_USER,
+        ref_id=user_id,
+    )
+    if not raw:
+        return None
+    try:
+        return GrowthPatternPayload.model_validate(raw)
+    except Exception:
+        return None
+
+
 def _assemble_chat_context(db: Session, user_id: int) -> ContextBundle:
     payload = _load_profile_slice_payload(db, user_id, fallback_live=False)
-    if payload is None:
-        return ContextBundle(scene=SCENE_CHAT)
-
     narrative_blocks: list[str] = []
-    snapshot = (payload.snapshot or "").strip()
-    if snapshot:
-        narrative_blocks.append(snapshot)
+    anchors: dict[str, Any] = {}
+
+    if payload is not None:
+        snapshot = (payload.snapshot or "").strip()
+        if snapshot:
+            narrative_blocks.append(snapshot)
+        anchors = _profile_to_anchors(payload)
+
+    episodic_raw = _optional_slice_payload(
+        db,
+        user_id,
+        SLICE_TYPE_EPISODIC_NARRATIVE,
+        ref_type=REF_TYPE_USER,
+        ref_id=user_id,
+    )
+    if episodic_raw:
+        try:
+            episodic = EpisodicNarrativePayload.model_validate(episodic_raw)
+            anchors["episodic_narrative"] = episodic.model_dump()
+            if episodic.summary.strip():
+                narrative_blocks.append(episodic.summary.strip())
+        except Exception:
+            anchors["episodic_narrative"] = episodic_raw
+
+    pattern = _load_growth_pattern_light(db, user_id)
+    if pattern:
+        anchors["growth_pattern"] = pattern.model_dump()
+        if pattern.narrative and pattern.narrative.strip():
+            narrative_blocks.append(pattern.narrative.strip()[:200])
 
     return ContextBundle(
         scene=SCENE_CHAT,
         narrative_blocks=narrative_blocks,
-        anchors=_profile_to_anchors(payload),
+        anchors=anchors,
     )
 
 
@@ -523,10 +572,91 @@ def _assemble_feedback_context(
     workload = _load_workload_snapshot(db, user_id)
     anchors["workload"] = workload.model_dump()
 
+    pattern = _load_growth_pattern_light(db, user_id)
+    if pattern:
+        anchors["growth_pattern"] = pattern.model_dump()
+        if pattern.narrative and pattern.narrative.strip():
+            narrative_blocks.append(pattern.narrative.strip())
+
+    weekly_raw = _optional_slice_payload(
+        db,
+        user_id,
+        SLICE_TYPE_WEEKLY_NARRATIVE,
+        ref_type=REF_TYPE_USER,
+        ref_id=user_id,
+    )
+    if weekly_raw:
+        try:
+            weekly = WeeklyNarrativePayload.model_validate(weekly_raw)
+            anchors["weekly_narrative"] = weekly.model_dump()
+            if weekly.narrative.strip():
+                narrative_blocks.append(weekly.narrative.strip())
+        except Exception:
+            anchors["weekly_narrative"] = weekly_raw
+
+    milestone_achievements: list[dict[str, Any]] = []
+    for record in records:
+        if record.record_type != "milestone" or not record.source_ref_id:
+            continue
+        mile_raw = _optional_slice_payload(
+            db,
+            user_id,
+            SLICE_TYPE_MILESTONE_ACHIEVEMENT,
+            ref_type=REF_TYPE_BREAKDOWN,
+            ref_id=record.source_ref_id,
+        )
+        if mile_raw:
+            try:
+                mile = MilestoneAchievementPayload.model_validate(mile_raw)
+                milestone_achievements.append(mile.model_dump())
+                if mile.narrative.strip():
+                    narrative_blocks.append(mile.narrative.strip())
+            except Exception:
+                milestone_achievements.append(mile_raw)
+    if milestone_achievements:
+        anchors["milestone_achievements"] = milestone_achievements
+
     anchors["entity_hints"] = {"records": record_hints}
 
     return ContextBundle(
         scene=SCENE_FEEDBACK,
+        narrative_blocks=narrative_blocks,
+        anchors=anchors,
+    )
+
+
+def _assemble_instant_feedback_context(
+    db: Session,
+    user_id: int,
+    *,
+    goal_id: int | None,
+    main_breakdown_id: int | None,
+) -> ContextBundle:
+    profile_payload = _load_profile_slice_payload(db, user_id, fallback_live=True)
+    narrative_blocks: list[str] = []
+    anchors: dict[str, Any] = {}
+
+    if profile_payload is not None:
+        snapshot = (profile_payload.snapshot or "").strip()
+        if snapshot:
+            narrative_blocks.append(snapshot)
+        anchors = _profile_to_anchors(profile_payload)
+
+    if goal_id is not None:
+        execution = _load_execution_feedback(db, user_id, goal_id)
+        anchors["execution_feedback"] = execution.model_dump()
+        if execution.total_items:
+            narrative_blocks.append(
+                f"本目标执行：已完成 {execution.completed_items}/{execution.total_items} 项。"
+            )
+
+    anchors["entity_hints"] = {
+        "goal_id": goal_id,
+        "breakdown_id": main_breakdown_id,
+    }
+
+    return ContextBundle(
+        scene=SCENE_INSTANT_FEEDBACK,
         narrative_blocks=narrative_blocks,
         anchors=anchors,
     )
@@ -562,5 +692,12 @@ def assemble_context(
             start_date=start_date,
             end_date=end_date,
             goal_id=goal_id,
+        )
+    if scene == SCENE_INSTANT_FEEDBACK:
+        return _assemble_instant_feedback_context(
+            db,
+            user_id,
+            goal_id=goal_id,
+            main_breakdown_id=main_breakdown_id,
         )
     raise ValueError(f"Unsupported UKL assemble scene: {scene}")

@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ["UKL_ENABLED"] = "false"
 os.environ["CHAT_SESSION_SUMMARY_ENABLED"] = "false"
+os.environ["ACTION_PLAN_COMPLETION_ASYNC"] = "false"
 os.environ.setdefault("AUTH_SECRET_KEY", "test-secret-key-test-secret-key-test-secret-key")
 os.environ.setdefault("AUTH_ALGORITHM", "HS256")
 os.environ.setdefault("AUTH_ACCESS_TOKEN_EXPIRES_MINUTES", "120")
