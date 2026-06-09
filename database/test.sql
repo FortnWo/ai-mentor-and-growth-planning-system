@@ -308,3 +308,40 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
     INDEX idx_usage_model (model)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------
+-- ukl_slice (user knowledge layer projections)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ukl_slice (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    slice_type VARCHAR(64) NOT NULL,
+    source_module VARCHAR(64) NOT NULL,
+    ref_type VARCHAR(32) NULL,
+    ref_id INT UNSIGNED NULL,
+    payload TEXT NOT NULL,
+    version INT UNSIGNED NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_ukl_slice_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_ukl_slice_identity (user_id, slice_type, ref_type, ref_id),
+    INDEX idx_ukl_slice_user_type (user_id, slice_type),
+    INDEX idx_ukl_slice_ref (ref_type, ref_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------
+-- chat_session_summary (UKL1 session rolling narrative)
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS chat_session_summary (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    session_id INT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NOT NULL,
+    summary TEXT NOT NULL,
+    summarized_through_message_id INT UNSIGNED NULL,
+    message_count INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_chat_session_summary_session FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    CONSTRAINT fk_chat_session_summary_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_chat_session_summary_session (session_id),
+    INDEX idx_chat_session_summary_user (user_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

@@ -10,22 +10,22 @@ from app.core.db_session import session_scope
 from app.core.ukl_constants import PROFILE_FIELD_NAMES, SCENE_CHAT
 from app.models.chat import ChatMessage, MessageRole
 from app.models.chat_session_summary import ChatSessionSummary
-from app.services import ai_service, profile_service, ukl_service
+from app.services import ai_service, profile_service, ukl_memory_fact_service, ukl_service
 
 logger = logging.getLogger(__name__)
 
 _PROFILE_SECTION_HEADER = "[用户画像]"
 _EPISODIC_SECTION_HEADER = "[跨会话记忆]"
+_MEMORY_FACT_SECTION_HEADER = "[相关事实记忆]"
 _SESSION_SUMMARY_HEADER = "[本会话Earlier摘要]"
 
-_EPISODIC_KEYWORDS = ("之前", "记得", "进度", "上次", "以前", "延续")
+
+def should_trigger_tier2_retrieval(query: str) -> bool:
+    return ukl_memory_fact_service.should_trigger_tier2_retrieval(query)
 
 
 def should_include_episodic_extra(query: str) -> bool:
-    text = (query or "").strip()
-    if not text:
-        return False
-    return any(keyword in text for keyword in _EPISODIC_KEYWORDS)
+    return should_trigger_tier2_retrieval(query)
 
 
 def _role_to_value(role: MessageRole | str) -> str:
@@ -99,7 +99,12 @@ def _build_profile_section(
     *,
     current_user_message: str = "",
 ) -> str | None:
-    bundle = ukl_service.assemble_context(db, user_id, SCENE_CHAT)
+    bundle = ukl_service.assemble_context(
+        db,
+        user_id,
+        SCENE_CHAT,
+        query=current_user_message,
+    )
     narrative = "\n".join(block.strip() for block in bundle.narrative_blocks if block and block.strip()).strip()
 
     sections: list[str] = []
@@ -112,6 +117,16 @@ def _build_profile_section(
         episodic_text = str(episodic.get("summary") or "").strip()
     if episodic_text and should_include_episodic_extra(current_user_message):
         sections.append(f"{_EPISODIC_SECTION_HEADER}\n{episodic_text}")
+
+    memory_facts = bundle.anchors.get("memory_facts")
+    if isinstance(memory_facts, list) and memory_facts:
+        fact_lines = [
+            f"- {str(item.get('fact') or '').strip()}"
+            for item in memory_facts
+            if isinstance(item, dict) and str(item.get("fact") or "").strip()
+        ]
+        if fact_lines:
+            sections.append(f"{_MEMORY_FACT_SECTION_HEADER}\n" + "\n".join(fact_lines))
 
     if sections:
         return "\n\n".join(sections)
@@ -267,6 +282,82 @@ def _schedule_episodic_narrative_ingest(user_id: int) -> None:
             logger.exception("Episodic narrative ingest failed user_id=%s", user_id)
 
     submit_ai_task(_run)
+
+
+def _run_memory_fact_extraction(
+    *,
+    user_id: int,
+    session_id: int,
+    assistant_message_id: int,
+) -> None:
+    if not settings.UKL_ENABLED or not settings.MEMORY_FACT_ENABLED:
+        return
+    if not settings.MEMORY_FACT_EXTRACTION_ENABLED:
+        return
+
+    try:
+        with session_scope() as db:
+            messages = filter_completed_messages(list_session_messages(db, session_id))
+            assistant = next((m for m in messages if m.id == assistant_message_id), None)
+            if assistant is None:
+                return
+
+            assistant_text = (assistant.content or "").strip()
+            user_text = ""
+            for message in reversed(messages):
+                if message.id >= assistant_message_id:
+                    continue
+                role = _role_to_value(message.role)
+                if role == MessageRole.USER.value:
+                    user_text = (message.content or "").strip()
+                    break
+
+            summary_row = _get_session_summary_row(db, session_id)
+            session_summary = (summary_row.summary or "").strip() if summary_row else None
+
+            count = ukl_memory_fact_service.extract_and_ingest_facts_for_turn(
+                db,
+                user_id=user_id,
+                session_id=session_id,
+                message_id=assistant_message_id,
+                user_message=user_text,
+                assistant_message=assistant_text,
+                session_summary=session_summary,
+            )
+            if count:
+                logger.info(
+                    "Memory facts ingested user_id=%s session_id=%s message_id=%s count=%s",
+                    user_id,
+                    session_id,
+                    assistant_message_id,
+                    count,
+                )
+    except Exception:
+        logger.exception(
+            "Memory fact extraction failed user_id=%s session_id=%s message_id=%s",
+            user_id,
+            session_id,
+            assistant_message_id,
+        )
+
+
+def schedule_memory_fact_extraction(
+    *,
+    user_id: int,
+    session_id: int,
+    assistant_message_id: int,
+) -> None:
+    if not settings.UKL_ENABLED or not settings.MEMORY_FACT_ENABLED:
+        return
+    if not settings.MEMORY_FACT_EXTRACTION_ENABLED:
+        return
+
+    submit_ai_task(
+        _run_memory_fact_extraction,
+        user_id=user_id,
+        session_id=session_id,
+        assistant_message_id=assistant_message_id,
+    )
 
 
 def schedule_session_summary_update(session_id: int, user_id: int) -> None:

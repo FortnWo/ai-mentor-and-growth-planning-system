@@ -98,6 +98,15 @@ class GoalIntentPayload(BaseModel):
     intent: str | None = None
 
 
+class MemoryFactPayload(BaseModel):
+    fact: str
+    session_id: int | None = None
+    message_id: int | None = None
+    salience: float = 0.5
+    occurred_at: datetime | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
 class ContextBundle(BaseModel):
     scene: str
     narrative_blocks: list[str] = Field(default_factory=list)

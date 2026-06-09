@@ -297,7 +297,7 @@ def _load_growth_pattern_light(db: Session, user_id: int) -> GrowthPatternPayloa
         return None
 
 
-def _assemble_chat_context(db: Session, user_id: int) -> ContextBundle:
+def _assemble_chat_context(db: Session, user_id: int, *, query: str | None = None) -> ContextBundle:
     payload = _load_profile_slice_payload(db, user_id, fallback_live=False)
     narrative_blocks: list[str] = []
     anchors: dict[str, Any] = {}
@@ -329,6 +329,14 @@ def _assemble_chat_context(db: Session, user_id: int) -> ContextBundle:
         anchors["growth_pattern"] = pattern.model_dump()
         if pattern.narrative and pattern.narrative.strip():
             narrative_blocks.append(pattern.narrative.strip()[:200])
+
+    if query and query.strip():
+        from app.services import ukl_memory_fact_service
+
+        if ukl_memory_fact_service.should_trigger_tier2_retrieval(query):
+            memory_facts = ukl_memory_fact_service.search_memory_facts(db, user_id, query)
+            if memory_facts:
+                anchors["memory_facts"] = memory_facts
 
     return ContextBundle(
         scene=SCENE_CHAT,
@@ -672,10 +680,11 @@ def assemble_context(
     is_refresh: bool = False,
     start_date: date | None = None,
     end_date: date | None = None,
+    query: str | None = None,
     **kwargs: Any,
 ) -> ContextBundle:
     if scene == SCENE_CHAT:
-        return _assemble_chat_context(db, user_id)
+        return _assemble_chat_context(db, user_id, query=query)
     if scene == SCENE_BREAKDOWN:
         return _assemble_breakdown_context(db, user_id, goal_id=goal_id, is_refresh=is_refresh)
     if scene == SCENE_ACTION_PLAN:

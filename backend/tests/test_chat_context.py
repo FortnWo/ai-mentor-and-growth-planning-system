@@ -3,12 +3,16 @@ import json
 import pytest
 
 from app.core.config import settings
-from app.core.ukl_constants import REF_TYPE_USER, SLICE_TYPE_PROFILE
+from app.core.ukl_constants import (
+    REF_TYPE_USER,
+    SLICE_TYPE_EPISODIC_NARRATIVE,
+    SLICE_TYPE_PROFILE,
+)
 from app.models.chat import ChatMessage, ChatSession, MessageRole
 from app.models.chat_session_summary import ChatSessionSummary
 from app.models.user import User
 from app.schemas.profile import UserProfileUpdate
-from app.services import chat_context_service, profile_service, ukl_service
+from app.services import chat_context_service, profile_service, ukl_memory_fact_service, ukl_service
 
 
 @pytest.fixture
@@ -233,3 +237,94 @@ def test_post_chat_works_with_ukl_enabled(client, monkeypatch):
         headers={"Authorization": f"Bearer {user_token}"},
     )
     assert response.status_code == 200
+
+
+def test_tier2_memory_facts_included_when_gate_hits(db_session, chat_user, chat_session, monkeypatch):
+    monkeypatch.setattr(settings, "UKL_ENABLED", True)
+    monkeypatch.setattr(settings, "MEMORY_FACT_ENABLED", True)
+    monkeypatch.setattr(settings, "MEMORY_FACT_EMBEDDING_ENABLED", True)
+    monkeypatch.setattr(settings, "CHAT_SUMMARY_USE_THRESHOLD", 100)
+
+    monkeypatch.setattr(
+        "app.services.ai_service.create_embedding",
+        lambda text: [1.0, 0.0, 0.0],
+    )
+
+    ukl_service.ingest_profile_from_user(db_session, chat_user.id)
+    ukl_memory_fact_service.ingest_memory_fact(
+        db_session,
+        chat_user.id,
+        fact="用户每周三晚上有空学英语",
+        session_id=chat_session.id,
+        message_id=1,
+        salience=0.9,
+    )
+    db_session.commit()
+
+    prompt = chat_context_service.build_chat_context(
+        db_session,
+        user_id=chat_user.id,
+        session_id=chat_session.id,
+        current_user_message="你还记得之前说过什么时候学英语吗",
+    )
+    assert "[相关事实记忆]" in prompt
+    assert "每周三晚上有空学英语" in prompt
+
+
+def test_tier2_memory_facts_excluded_without_gate(db_session, chat_user, chat_session, monkeypatch):
+    monkeypatch.setattr(settings, "UKL_ENABLED", True)
+    monkeypatch.setattr(settings, "MEMORY_FACT_ENABLED", True)
+    monkeypatch.setattr(settings, "MEMORY_FACT_EMBEDDING_ENABLED", True)
+    monkeypatch.setattr(settings, "CHAT_SUMMARY_USE_THRESHOLD", 100)
+
+    ukl_service.ingest_profile_from_user(db_session, chat_user.id)
+    ukl_memory_fact_service.ingest_memory_fact(
+        db_session,
+        chat_user.id,
+        fact="用户每周三晚上有空学英语",
+        session_id=chat_session.id,
+        message_id=2,
+        salience=0.9,
+    )
+    db_session.commit()
+
+    prompt = chat_context_service.build_chat_context(
+        db_session,
+        user_id=chat_user.id,
+        session_id=chat_session.id,
+        current_user_message="今天天气不错",
+    )
+    assert "[相关事实记忆]" not in prompt
+
+
+def test_episodic_extra_still_gated(db_session, chat_user, chat_session, monkeypatch):
+    monkeypatch.setattr(settings, "UKL_ENABLED", True)
+    monkeypatch.setattr(settings, "CHAT_SUMMARY_USE_THRESHOLD", 100)
+
+    ukl_service.ingest(
+        db_session,
+        chat_user.id,
+        slice_type=SLICE_TYPE_EPISODIC_NARRATIVE,
+        source_module="test",
+        ref_type=REF_TYPE_USER,
+        ref_id=chat_user.id,
+        payload={"summary": "用户最近在准备期末考试。", "updated_at": None},
+    )
+    ukl_service.ingest_profile_from_user(db_session, chat_user.id)
+    db_session.commit()
+
+    gated_prompt = chat_context_service.build_chat_context(
+        db_session,
+        user_id=chat_user.id,
+        session_id=chat_session.id,
+        current_user_message="还记得上次的进度吗",
+    )
+    plain_prompt = chat_context_service.build_chat_context(
+        db_session,
+        user_id=chat_user.id,
+        session_id=chat_session.id,
+        current_user_message="聊聊今天的安排",
+    )
+    assert "[跨会话记忆]" in gated_prompt
+    assert "期末考试" in gated_prompt
+    assert "[跨会话记忆]" not in plain_prompt

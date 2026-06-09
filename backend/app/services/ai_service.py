@@ -385,6 +385,44 @@ def build_goal_intent_response(message: str) -> str:
     )
 
 
+def build_memory_fact_extraction_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="memory fact extraction",
+        message=message,
+        instructions=settings.MEMORY_FACT_EXTRACTION_SYSTEM_PROMPT,
+    )
+
+
+def create_embedding(text: str) -> list[float]:
+    content = (text or "").strip()
+    if not content:
+        return []
+
+    if not settings.EMBEDDING_MODEL:
+        raise RuntimeError("EMBEDDING_MODEL is not configured")
+
+    try:
+        client = _get_ai_client()
+        response = client.embeddings.create(
+            model=settings.EMBEDDING_MODEL,
+            input=content,
+        )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise AIServiceError(f"AI embedding request failed: {exc}") from exc
+
+    data = getattr(response, "data", None) or []
+    if not data:
+        raise AIServiceError("AI embedding response did not contain any vectors")
+
+    embedding = getattr(data[0], "embedding", None)
+    if not isinstance(embedding, list) or not embedding:
+        raise AIServiceError("AI embedding response vector is empty")
+
+    return [float(value) for value in embedding]
+
+
 def build_action_plan_response(message: str) -> str:
     return _invoke_ai(
         task_name="action plan",

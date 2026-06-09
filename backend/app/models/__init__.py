@@ -12,6 +12,7 @@ from app.models.verification_code import VerificationCode
 from app.models.system_config import SystemConfig, AIUsageLog
 from app.models.ukl_slice import UklSlice
 from app.models.chat_session_summary import ChatSessionSummary
+from app.models.memory_embedding import MemoryEmbedding
 
 __all__ = [
     "User",
@@ -40,4 +41,5 @@ __all__ = [
     "AIUsageLog",
     "UklSlice",
     "ChatSessionSummary",
+    "MemoryEmbedding",
 ]

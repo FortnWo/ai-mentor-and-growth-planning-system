@@ -228,7 +228,7 @@ ON_MILESTONE_REACHED:    # 建议新增
 | **UKL2** | 已完成 | `scene=breakdown`/`action_plan`、拆解 UKL 切片、行动计划覆盖校验 |
 | **UKL3** | 已完成 | execution 切片 ingest、`scene=feedback`、growth_journal、周总结 UKL 路径 |
 | **UKL4** | 已完成 | milestone 实体与 `milestone_achievement`、`growth_pattern`/`weekly_narrative`、A2 叙事固化、D 批量补强、`scene=instant_feedback` |
-| **UKL5** | 待开始 | A3 向量与 Tier2 门控 |
+| **UKL5** | 已完成 | `memory_fact` 切片 + `memory_embedding` 表、异步事实抽取、Tier2 门控向量检索、`[相关事实记忆]` prompt 注入 |
 
 ## 十三、待实现时细化的项
 

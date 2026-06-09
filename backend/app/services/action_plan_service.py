@@ -181,6 +181,8 @@ def generate_action_plan_with_retry(
             return refresh_action_plan(db, user_id, plan_id)
         except (RuntimeError, ValueError) as exc:
             last_error = exc
+            if "not valid JSON" in str(exc):
+                raise
             if attempt >= max_attempts:
                 break
             delay = base_delay_seconds * (2 ** (attempt - 1))

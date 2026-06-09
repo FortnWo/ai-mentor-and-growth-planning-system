@@ -591,6 +591,11 @@ def process_message_in_background(session_id: int, message: str, assistant_messa
 
         if owner_id and final_status is not None and final_status == MessageDeliveryStatus.COMPLETED:
             chat_context_service.schedule_session_summary_update(session_id, owner_id)
+            chat_context_service.schedule_memory_fact_extraction(
+                user_id=owner_id,
+                session_id=session_id,
+                assistant_message_id=assistant_message_id,
+            )
             event_bus.publish(
                 event_name=DomainEventName.ON_CHAT_MESSAGE.value,
                 user_id=owner_id,

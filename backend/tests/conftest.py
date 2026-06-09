@@ -24,6 +24,7 @@ from app.models import ChatMessage, ChatSession, User  # noqa: F401, E402
 from app.models.system_config import AIUsageLog, SystemConfig  # noqa: F401, E402
 from app.models.ukl_slice import UklSlice  # noqa: F401, E402
 from app.models.chat_session_summary import ChatSessionSummary  # noqa: F401, E402
+from app.models.memory_embedding import MemoryEmbedding  # noqa: F401, E402
 import app.core.database as database_module  # noqa: E402
 import app.core.bootstrap as bootstrap_module  # noqa: E402
 import app.main as app_module  # noqa: E402
@@ -58,6 +59,19 @@ def sync_ai_worker(monkeypatch):
         return future
 
     monkeypatch.setattr(ai_worker_module, "submit_ai_task", submit_sync)
+    for module_name in (
+        "app.routers.action_plan",
+        "app.routers.chat",
+        "app.routers.growth_record",
+        "app.services.chat_context_service",
+        "app.services.action_plan_service",
+        "app.workflows.growth_cycle_orchestrator",
+    ):
+        try:
+            module = __import__(module_name, fromlist=["submit_ai_task"])
+            monkeypatch.setattr(module, "submit_ai_task", submit_sync)
+        except (ImportError, AttributeError):
+            pass
 
 
 @pytest.fixture()

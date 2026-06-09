@@ -1,3 +1,5 @@
+import time
+
 from app.services import chat_service
 
 
@@ -103,11 +105,12 @@ def test_action_plan_completion_writes_record(client, monkeypatch):
 
     # poll for plan ready
     detail = None
-    for _ in range(20):
+    for _ in range(40):
         d = client.get(f"/action-plans/{plan_id}", headers=headers)
         if d.status_code == 200 and d.json().get("status") != "in_progress":
             detail = d.json()
             break
+        time.sleep(0.05)
 
     assert detail is not None
 

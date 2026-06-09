@@ -9,6 +9,7 @@ SLICE_TYPE_MILESTONE_ACHIEVEMENT = "milestone_achievement"
 SLICE_TYPE_GROWTH_PATTERN = "growth_pattern"
 SLICE_TYPE_WEEKLY_NARRATIVE = "weekly_narrative"
 SLICE_TYPE_EPISODIC_NARRATIVE = "episodic_narrative"
+SLICE_TYPE_MEMORY_FACT = "memory_fact"
 
 SCENE_CHAT = "chat"
 SCENE_BREAKDOWN = "breakdown"
@@ -31,6 +32,7 @@ SOURCE_MODULE_MILESTONE = "milestone_service"
 SOURCE_MODULE_CHAT = "chat_context_service"
 SOURCE_MODULE_PATTERN = "ukl_pattern_service"
 SOURCE_MODULE_NARRATIVE = "ukl_narrative_service"
+SOURCE_MODULE_MEMORY_FACT = "ukl_memory_fact_service"
 
 PROFILE_FIELD_NAMES = (
     "interests",

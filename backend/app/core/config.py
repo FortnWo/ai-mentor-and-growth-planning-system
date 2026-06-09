@@ -130,6 +130,23 @@ class Settings(BaseSettings):
         "不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
     )
     ACTION_PLAN_COMPLETION_ASYNC: bool = True
+    MEMORY_FACT_ENABLED: bool = True
+    MEMORY_FACT_EXTRACTION_ENABLED: bool = True
+    MEMORY_FACT_EMBEDDING_ENABLED: bool = True
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    MEMORY_FACT_TOP_K: int = 5
+    MEMORY_FACT_MIN_SCORE: float = 0.72
+    MEMORY_FACT_MAX_PER_TURN: int = 3
+    MEMORY_FACT_MIN_SALIENCE: float = 0.4
+    MEMORY_FACT_EXTRACTION_SYSTEM_PROMPT: str = (
+        "You are a memory fact extractor. "
+        "Given a user-assistant dialogue turn, extract durable personal facts stated in the conversation. "
+        "Return strict JSON only: an array of objects with keys fact (string, Chinese), "
+        "salience (float 0-1), tags (array of short strings like schedule, goal, preference). "
+        "Only include facts explicitly stated; do not invent. "
+        "Return an empty array when no durable fact exists. "
+        "Do not include markdown or commentary."
+    )
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
     AUTH_ALGORITHM: str = "HS256"
