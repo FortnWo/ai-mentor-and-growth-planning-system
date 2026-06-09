@@ -311,6 +311,14 @@ def build_goal_breakdown_response(message: str) -> str:
     )
 
 
+def build_breakdown_summary_response(message: str) -> str:
+    return _invoke_ai(
+        task_name="breakdown summary",
+        message=message,
+        instructions=settings.BREAKDOWN_SUMMARY_SYSTEM_PROMPT,
+    )
+
+
 def build_action_plan_response(message: str) -> str:
     return _invoke_ai(
         task_name="action plan",

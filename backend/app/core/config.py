@@ -42,7 +42,9 @@ class Settings(BaseSettings):
         "Given a user goal and optional context, generate a structured breakdown as strict JSON only. "
         "Return JSON with 'breakdowns' key containing an array of breakdown nodes. "
         "Each node must have: title (string), description (string or null), children (array of nodes). "
-        "Nodes can be nested recursively. "
+        "Prefer a three-level tree: ONE top node mirroring the goal title, "
+        "its direct children as main pillars (3-5 phases), each with branch children as concrete subtasks. "
+        "For simple goals you may use a two-level tree where top-level nodes are main pillars with branch children. "
         "If unknown, return empty 'breakdowns' array. "
         "Do not include markdown or extra commentary."
     )
@@ -81,6 +83,12 @@ class Settings(BaseSettings):
         "你是对话摘要助手。根据已有摘要与新增对话，输出更新后的中文会话摘要（第二人称，150-400字）。"
         "保留关键事实、目标、情绪与未决事项；不要编造；不要输出 markdown 或标题。"
     )
+    BREAKDOWN_SUMMARY_ENABLED: bool = True
+    BREAKDOWN_SUMMARY_SYSTEM_PROMPT: str = (
+        "你是目标拆解叙事助手。根据目标信息与拆解树结构，输出 150-300 字中文叙事摘要。"
+        "概括拆解思路、关键支柱与执行节奏；不要输出 JSON、markdown 或标题；不要编造未给出的细节。"
+    )
+    ACTION_PLAN_COVERAGE_VALIDATION_ENABLED: bool = True
 
     AUTH_SECRET_KEY: str = "change-me-in-production-with-a-long-secret-key"
     AUTH_ALGORITHM: str = "HS256"

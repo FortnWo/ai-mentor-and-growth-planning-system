@@ -13,10 +13,12 @@ const props = withDefaults(
     nodes: GoalBreakdownNode[]
     progressByMainId?: Record<number, { total: number; done: number }>
     selectedMainId?: number | null
+    mainNodeIds?: number[]
   }>(),
   {
     progressByMainId: () => ({}),
     selectedMainId: null,
+    mainNodeIds: () => [],
   },
 )
 
@@ -24,9 +26,6 @@ const emit = defineEmits<{
   'select-main': [id: number]
 }>()
 
-function progressFor(node: GoalBreakdownNode) {
-  return props.progressByMainId[node.id] ?? null
-}
 </script>
 
 <template>
@@ -36,8 +35,9 @@ function progressFor(node: GoalBreakdownNode) {
       :key="node.id"
       :node="node"
       :depth="0"
-      :plan-progress="progressFor(node)"
+      :progress-by-main-id="progressByMainId"
       :selected-main-id="selectedMainId"
+      :main-node-ids="mainNodeIds"
       @select-main="(id) => emit('select-main', id)"
     />
   </div>

@@ -6,6 +6,8 @@ from app.services import (
     info_service,
     plan_service,
     profile_service,
+    ukl_projection_service,
+    ukl_prompt_service,
     ukl_service,
 )
 from app.services import growth_record_service
@@ -26,5 +28,7 @@ __all__ = [
 	"growth_record_service",
 	"growth_summary_service",
 	"ukl_service",
+	"ukl_projection_service",
+	"ukl_prompt_service",
 	"chat_context_service",
 ]

@@ -394,3 +394,92 @@ def test_patch_action_plan_item_completion_syncs_growth_record(client, monkeypat
     )
     assert undo.status_code == 200
     assert undo.json()["status"] == "pending"
+
+
+def _mock_three_level_goal_breakdown_response(goal_title: str = "Learn Frontend"):
+    return json.dumps(
+        {
+            "breakdowns": [
+                {
+                    "title": goal_title,
+                    "description": "Goal wrapper",
+                    "children": [
+                        {
+                            "title": "HTML/CSS pillar",
+                            "description": "Main pillar 1",
+                            "children": [
+                                {"title": "HTML5", "description": "branch", "children": []},
+                                {"title": "CSS Grid", "description": "branch", "children": []},
+                            ],
+                        },
+                        {
+                            "title": "JavaScript pillar",
+                            "description": "Main pillar 2",
+                            "children": [
+                                {"title": "ES6", "description": "branch", "children": []},
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
+
+def test_three_level_breakdown_creates_plan_per_main_pillar(client, monkeypatch):
+    student = create_student_user(client, 99)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(
+        chat_service,
+        "build_goal_breakdown_response",
+        lambda message: _mock_three_level_goal_breakdown_response(),
+    )
+    monkeypatch.setattr(
+        chat_service,
+        "build_action_plan_response",
+        lambda message: json.dumps({"plan": {"title": "Auto", "summary": "x"}, "items": []}),
+    )
+
+    create_response = client.post(
+        "/goals",
+        json={
+            "title": "Learn Frontend",
+            "description": "Master frontend stack",
+            "priority": "high",
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    goal_id = create_response.json()["id"]
+
+    detail = None
+    for _ in range(20):
+        detail_resp = client.get(f"/goals/{goal_id}", headers=headers)
+        assert detail_resp.status_code == 200
+        detail = detail_resp.json()
+        if detail.get("breakdowns", {}).get("root_nodes"):
+            break
+        time.sleep(0.05)
+    assert detail is not None
+
+    wrapper = detail["breakdowns"]["root_nodes"][0]
+    pillars = wrapper["children"]
+    assert len(pillars) == 2
+    assert detail["main_breakdown_ids"] == [p["id"] for p in pillars]
+
+    summaries = None
+    for _ in range(40):
+        list_resp = client.get("/action-plans", params={"goal_id": goal_id}, headers=headers)
+        assert list_resp.status_code == 200
+        summaries = list_resp.json()
+        if len(summaries) >= 2 and all(p["status"] != "in_progress" for p in summaries):
+            break
+        time.sleep(0.05)
+
+    assert summaries is not None
+    assert len(summaries) == 2
+    main_ids = {row["main_breakdown_id"] for row in summaries}
+    assert main_ids == {pillars[0]["id"], pillars[1]["id"]}
+    assert wrapper["id"] not in main_ids

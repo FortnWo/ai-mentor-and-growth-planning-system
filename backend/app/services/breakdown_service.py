@@ -1,9 +1,21 @@
 import json
 import logging
+import re
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.ukl_constants import (
+    CONSTRAINT_HINT_KEYWORDS,
+    REF_TYPE_GOAL,
+    SLICE_TYPE_BREAKDOWN_ANCHORS,
+    SLICE_TYPE_BREAKDOWN_SUMMARY,
+    SOURCE_MODULE_BREAKDOWN,
+)
 from app.models.goal import Goal, GoalBreakdown, GoalBreakdownStatus
+from app.schemas.ukl import BreakdownAnchorsPayload, BreakdownSummaryPayload
+from app.services import profile_service
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +68,7 @@ def apply_breakdown_for_goal(
 
         _insert_breakdown_nodes(db, goal_id, breakdowns)
         db.commit()
+        ingest_breakdown_slices_for_goal(db, user_id, goal_id)
         return True
     except Exception as exc:
         db.rollback()
@@ -70,6 +83,143 @@ def refresh_breakdown_for_goal(
     breakdown_data: dict,
 ) -> bool:
     return apply_breakdown_for_goal(db, user_id, goal_id, breakdown_data)
+
+
+def ingest_breakdown_slices_for_goal(db: Session, user_id: int, goal_id: int) -> None:
+    if not settings.UKL_ENABLED or not settings.BREAKDOWN_SUMMARY_ENABLED:
+        return
+
+    try:
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == user_id).first()
+        if not goal:
+            return
+
+        tree_text = _format_breakdown_tree_for_summary(db, goal_id)
+        if not tree_text.strip():
+            return
+
+        from app.services import ai_service, ukl_service
+
+        summary_input = (
+            f"目标：{goal.title}\n"
+            f"描述：{goal.description or '（无）'}\n\n"
+            f"拆解结构：\n{tree_text}"
+        )
+        summary_text = ai_service.build_breakdown_summary_response(summary_input).strip()
+        if not summary_text:
+            summary_text = f"目标「{goal.title}」已拆解为可执行子节点。"
+
+        constraints = _extract_critical_constraints(db, user_id, goal)
+        dependency_notes = _extract_dependency_notes(db, goal_id)
+
+        now = datetime.utcnow()
+        ukl_service.ingest(
+            db,
+            user_id,
+            slice_type=SLICE_TYPE_BREAKDOWN_SUMMARY,
+            source_module=SOURCE_MODULE_BREAKDOWN,
+            ref_type=REF_TYPE_GOAL,
+            ref_id=goal_id,
+            payload=BreakdownSummaryPayload(
+                goal_id=goal_id,
+                summary=summary_text,
+                entity_updated_at=now,
+            ),
+        )
+        ukl_service.ingest(
+            db,
+            user_id,
+            slice_type=SLICE_TYPE_BREAKDOWN_ANCHORS,
+            source_module=SOURCE_MODULE_BREAKDOWN,
+            ref_type=REF_TYPE_GOAL,
+            ref_id=goal_id,
+            payload=BreakdownAnchorsPayload(
+                goal_id=goal_id,
+                critical_constraints=constraints,
+                dependency_notes=dependency_notes,
+            ),
+        )
+        db.commit()
+    except Exception:
+        logger.exception("UKL breakdown slice ingest failed goal_id=%s user_id=%s", goal_id, user_id)
+
+
+def _format_breakdown_tree_for_summary(db: Session, goal_id: int) -> str:
+    nodes = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.goal_id == goal_id)
+        .order_by(GoalBreakdown.level.asc(), GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .all()
+    )
+    lines: list[str] = []
+    for node in nodes:
+        indent = "  " * int(node.level or 0)
+        desc = f" — {node.description}" if node.description else ""
+        lines.append(f"{indent}- [{node.id}] {node.title}{desc}")
+    return "\n".join(lines)
+
+
+def _extract_critical_constraints(db: Session, user_id: int, goal: Goal) -> list[str]:
+    constraints: list[str] = []
+    seen: set[str] = set()
+
+    description = (goal.description or "").strip()
+    if description:
+        for fragment in re.split(r"[。；;\n]", description):
+            text = fragment.strip()
+            if not text:
+                continue
+            if any(keyword in text for keyword in CONSTRAINT_HINT_KEYWORDS):
+                key = text.lower()
+                if key not in seen:
+                    seen.add(key)
+                    constraints.append(text)
+
+    profile = profile_service.get_or_create_profile_for_user(db, user_id)
+    for habit in (profile.study_habits or [])[:3]:
+        text = str(habit).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        if any(keyword in text for keyword in CONSTRAINT_HINT_KEYWORDS):
+            seen.add(key)
+            constraints.append(text)
+
+    return constraints[:10]
+
+
+def _extract_dependency_notes(db: Session, goal_id: int) -> list[str]:
+    nodes = (
+        db.query(GoalBreakdown)
+        .filter(GoalBreakdown.goal_id == goal_id)
+        .order_by(GoalBreakdown.level.asc(), GoalBreakdown.sequence.asc(), GoalBreakdown.id.asc())
+        .all()
+    )
+    if len(nodes) <= 1:
+        return []
+
+    notes: list[str] = []
+    children_by_parent: dict[int | None, list[GoalBreakdown]] = {}
+    for node in nodes:
+        children_by_parent.setdefault(node.parent_id, []).append(node)
+
+    roots = children_by_parent.get(None, [])
+    if roots:
+        root_titles = "、".join(n.title for n in roots[:5])
+        notes.append(f"顶层拆解支柱：{root_titles}")
+
+    for parent_id, children in children_by_parent.items():
+        if parent_id is None or len(children) < 2:
+            continue
+        parent = next((n for n in nodes if n.id == parent_id), None)
+        if not parent:
+            continue
+        child_titles = "、".join(c.title for c in children[:6])
+        notes.append(f"「{parent.title}」下含 {len(children)} 个子节点：{child_titles}")
+
+    return notes[:8]
 
 
 def _extract_breakdowns_from_response(response_data: dict) -> list[dict] | None:
@@ -111,4 +261,3 @@ def _insert_breakdown_nodes(
         children = node_data.get("children", [])
         if children:
             _insert_breakdown_nodes(db, goal_id, children, parent_id=breakdown.id, level=level + 1)
-

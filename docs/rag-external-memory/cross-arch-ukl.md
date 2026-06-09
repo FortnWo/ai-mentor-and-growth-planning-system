@@ -225,7 +225,7 @@ ON_MILESTONE_REACHED:    # 建议新增
 | --- | --- | --- |
 | **UKL0** | 已完成 | `ukl_slice` 表、`ukl_service` ingest/assemble、`UKL_ENABLED` profile 双写 |
 | **UKL1** | 已完成 | `chat_session_summary`、`build_chat_context`、聊天主路径注意力打包 |
-| **UKL2** | 待开始 | C/B breakdown 与 action_plan 场景 |
+| **UKL2** | 已完成 | `scene=breakdown`/`action_plan`、拆解 UKL 切片、行动计划覆盖校验 |
 | **UKL3** | 待开始 | execution 切片 + E1 feedback |
 | **UKL4** | 待开始 | milestone、growth_pattern、A2 叙事固化 |
 | **UKL5** | 待开始 | A3 向量与 Tier2 门控 |

@@ -106,7 +106,7 @@ def test_assemble_context_chat_empty_when_no_slice(db_session, sample_user):
 
 def test_assemble_context_unknown_scene_raises(db_session, sample_user):
     with pytest.raises(ValueError, match="Unsupported UKL assemble scene"):
-        ukl_service.assemble_context(db_session, sample_user.id, "breakdown")
+        ukl_service.assemble_context(db_session, sample_user.id, "planning_loop")
 
 
 def test_profile_update_skips_ukl_when_disabled(db_session, sample_user, monkeypatch):

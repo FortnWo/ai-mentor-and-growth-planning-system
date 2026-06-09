@@ -14,10 +14,11 @@ const props = withDefaults(
   defineProps<{
     node: GoalBreakdownNode
     depth?: number
-    planProgress?: { total: number; done: number } | null
+    progressByMainId?: Record<number, { total: number; done: number }>
     selectedMainId?: number | null
+    mainNodeIds?: number[]
   }>(),
-  { depth: 0, planProgress: null, selectedMainId: null },
+  { depth: 0, progressByMainId: () => ({}), selectedMainId: null, mainNodeIds: () => [] },
 )
 
 const emit = defineEmits<{
@@ -27,8 +28,13 @@ const emit = defineEmits<{
 const expanded = ref(false)
 
 const hasChildren = computed(() => Boolean(props.node.children?.length))
-const isRoot = computed(() => props.depth === 0)
-const isClickable = computed(() => isRoot.value || hasChildren.value)
+const isMainSelectable = computed(() => {
+  if (props.mainNodeIds.length > 0) {
+    return props.mainNodeIds.includes(props.node.id)
+  }
+  return props.depth === 0
+})
+const isClickable = computed(() => isMainSelectable.value || hasChildren.value)
 
 const statusLabel = computed(() => {
   const s = props.node.status || 'pending'
@@ -38,9 +44,14 @@ const statusLabel = computed(() => {
   return '待开始'
 })
 
+const planProgress = computed(() => {
+  if (!isMainSelectable.value) return null
+  return props.progressByMainId[props.node.id] ?? null
+})
+
 const progressPercent = computed(() => {
-  if (!isRoot.value || !props.planProgress || props.planProgress.total <= 0) return null
-  return Math.round((props.planProgress.done / props.planProgress.total) * 100)
+  if (!planProgress.value || planProgress.value.total <= 0) return null
+  return Math.round((planProgress.value.done / planProgress.value.total) * 100)
 })
 
 const expandHintText = computed(() =>
@@ -51,7 +62,7 @@ function onBodyClick() {
   if (hasChildren.value) {
     expanded.value = !expanded.value
   }
-  if (isRoot.value) {
+  if (isMainSelectable.value) {
     emit('select-main', props.node.id)
   }
 }
@@ -64,9 +75,9 @@ function onBodyClick() {
       'path-node--nested': depth > 0,
       'path-node--branch': hasChildren,
       'path-node--expanded': hasChildren && expanded,
-      'path-node--main-selectable': isRoot,
-      'path-node--expandable': hasChildren && !isRoot,
-      'path-node--main-selected': isRoot && selectedMainId === node.id,
+      'path-node--main-selectable': isMainSelectable,
+      'path-node--expandable': hasChildren && !isMainSelectable,
+      'path-node--main-selected': isMainSelectable && selectedMainId === node.id,
     }"
   >
     <div class="path-node__trunk">
@@ -81,12 +92,21 @@ function onBodyClick() {
         @keydown.space.prevent="onBodyClick"
       >
         <div class="path-node__title-row">
-          <span v-if="depth > 0" class="path-node__dot" :class="'path-node__dot--' + (node.status || 'pending')" aria-hidden="true" />
-          <span v-else class="path-node__dot path-node__dot--main" aria-hidden="true" />
+          <span
+            v-if="isMainSelectable"
+            class="path-node__dot path-node__dot--main"
+            aria-hidden="true"
+          />
+          <span
+            v-else
+            class="path-node__dot"
+            :class="'path-node__dot--' + (node.status || 'pending')"
+            aria-hidden="true"
+          />
           <h4 class="path-node__title">{{ node.title }}</h4>
           <span class="path-node__status">{{ statusLabel }}</span>
         </div>
-        <div v-if="isRoot && progressPercent !== null" class="path-node__progress" aria-label="行动计划完成进度">
+        <div v-if="isMainSelectable && progressPercent !== null" class="path-node__progress" aria-label="行动计划完成进度">
           <div class="path-node__progress-track">
             <div class="path-node__progress-fill" :style="{ width: progressPercent + '%' }" />
           </div>
@@ -98,7 +118,8 @@ function onBodyClick() {
         >
           {{ node.description }}
         </p>
-        <p v-if="isRoot" class="path-node__hint">点击主节点在右侧查看该阶段的行动计划</p>
+        <p v-if="isMainSelectable" class="path-node__hint">点击主节点在右侧查看该阶段的行动计划</p>
+        <p v-else-if="depth === 0 && hasChildren" class="path-node__hint">展开查看各阶段主路径</p>
         <p v-if="hasChildren" class="path-node__hint">{{ expandHintText }}</p>
       </div>
     </div>
@@ -110,6 +131,10 @@ function onBodyClick() {
           :key="child.id"
           :node="child"
           :depth="depth + 1"
+          :main-node-ids="mainNodeIds"
+          :progress-by-main-id="progressByMainId"
+          :selected-main-id="selectedMainId"
+          @select-main="(id) => emit('select-main', id)"
         />
       </div>
     </div>

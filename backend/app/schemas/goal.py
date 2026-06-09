@@ -72,6 +72,7 @@ class GoalRead(BaseModel):
 class GoalDetailRead(GoalRead):
     """包含拆解树的目标详情"""
     breakdowns: GoalBreakdownTree
+    main_breakdown_ids: list[int] = Field(default_factory=list)
     main_action_plan_progress: list[MainActionPlanProgress] = Field(default_factory=list)
 
 

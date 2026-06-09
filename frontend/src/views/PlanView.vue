@@ -433,7 +433,18 @@ const isTimeoutError = (error: unknown): boolean => {
 
 // Computed
 const hasGoals = computed(() => goals.value.length > 0)
-const breakdownNodes = computed(() => selectedGoal.value?.breakdowns.root_nodes || [])
+const breakdownRootNodes = computed(() => selectedGoal.value?.breakdowns.root_nodes || [])
+const mainBreakdownIds = computed(() => selectedGoal.value?.main_breakdown_ids ?? [])
+/** 三层拆解时跳过目标包装根，直接展示主节点（主节点 + 分支，共两级）。 */
+const breakdownDisplayNodes = computed(() => {
+  const roots = breakdownRootNodes.value
+  const mainIds = mainBreakdownIds.value
+  if (roots.length === 1 && mainIds.length > 0 && !mainIds.includes(roots[0].id)) {
+    return roots[0].children ?? []
+  }
+  return roots
+})
+const hasBreakdown = computed(() => breakdownRootNodes.value.length > 0)
 const progressByMainId = computed(() => {
   const map: Record<number, { total: number; done: number }> = {}
   for (const row of selectedGoal.value?.main_action_plan_progress ?? []) {
@@ -568,12 +579,13 @@ onMounted(() => {
             <div class="detail-card detail-card--breakdown">
               <div class="detail-card__head">
                 <h3 class="detail-card__title">目标拆解</h3>
-                <p class="detail-card__lede">主路径节点默认展开；悬停带分支的节点可查看下级详情。</p>
+                <p class="detail-card__lede">主节点对应各阶段行动计划；点击可展开查看分支任务详情。</p>
               </div>
               <div class="detail-card__body">
-                <div v-if="breakdownNodes.length > 0" class="breakdown-path-wrap">
+                <div v-if="hasBreakdown" class="breakdown-path-wrap">
                   <BreakdownPathTree
-                    :nodes="breakdownNodes"
+                    :nodes="breakdownDisplayNodes"
+                    :main-node-ids="mainBreakdownIds"
                     :progress-by-main-id="progressByMainId"
                     :selected-main-id="selectedMainBreakdownId"
                     @select-main="onSelectMainBreakdown"
@@ -596,7 +608,7 @@ onMounted(() => {
                 <div class="detail-actions">
                   <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
                     @click="handleGenerateActionPlan()"
-                    :disabled="isActionPlanBusy || isActionPlanLoading || !breakdownNodes.length">
+                    :disabled="isActionPlanBusy || isActionPlanLoading || !hasBreakdown">
                     {{ isActionPlanBusy ? '处理中…' : '↻ 重新生成全部' }}
                   </button>
                   <button v-if="selectedActionPlan" class="btn btn--secondary btn--sm"

@@ -42,6 +42,7 @@ export interface Goal {
 
 export interface GoalDetail extends Goal {
     breakdowns: GoalBreakdownTree
+    main_breakdown_ids?: number[]
     main_action_plan_progress?: MainActionPlanProgress[]
 }
 

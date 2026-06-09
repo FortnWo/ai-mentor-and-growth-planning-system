@@ -11,31 +11,11 @@ import app.services.breakdown_service as breakdown_service
 import app.services.chat_service as chat_service
 import app.services.goal_service as goal_service
 import app.services.plan_service as plan_service
-import app.services.profile_service as profile_service
+import app.services.ukl_prompt_service as ukl_prompt_service
 
 
 logger = logging.getLogger("ai_mentor.orchestrator")
 _INITIALIZED = False
-
-
-def _build_goal_breakdown_prompt(goal_title: str, goal_description: str | None, user_profile=None) -> str:
-    lines: list[str] = []
-
-    lines.append("Goal to break down:")
-    lines.append(f"Title: {goal_title}")
-    if goal_description:
-        lines.append(f"Description: {goal_description}")
-
-    if user_profile:
-        lines.append("\nUser profile context:")
-        if user_profile.goals:
-            lines.append(f"User's goals: {', '.join(user_profile.goals)}")
-        if user_profile.skills:
-            lines.append(f"User's skills: {', '.join(user_profile.skills)}")
-        if user_profile.interests:
-            lines.append(f"User's interests: {', '.join(user_profile.interests)}")
-
-    return "\n".join(lines)
 
 
 def _publish_followup_event(event_name: DomainEventName, *, source_event: DomainEvent, payload: dict) -> None:
@@ -163,8 +143,7 @@ def _on_goal_detected(event: DomainEvent) -> None:
             logger.warning("Goal not found for breakdown goal_id=%s user_id=%s", goal_id, event.user_id)
             return
 
-        user_profile = profile_service.get_profile_for_user(db, event.user_id)
-        prompt = _build_goal_breakdown_prompt(goal.title, goal.description, user_profile)
+        prompt = ukl_prompt_service.build_goal_breakdown_prompt(db, event.user_id, goal)
         raw_response = chat_service.build_goal_breakdown_response(prompt)
         breakdown_data = breakdown_service.parse_breakdown_response(raw_response)
         if not breakdown_data:

@@ -13,6 +13,7 @@ from app.schemas.goal import (
     MainActionPlanProgress,
 )
 import app.services.breakdown_service as breakdown_service
+from app.services.goal_breakdown_utils import list_main_breakdown_ids
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ def get_goal_detail_for_user(db: Session, user_id: int, goal_id: int) -> GoalDet
         created_at=goal.created_at,
         updated_at=goal.updated_at,
         breakdowns=breakdown_tree,
+        main_breakdown_ids=list_main_breakdown_ids(db, goal.id),
         main_action_plan_progress=main_action_plan_progress,
     )
 
