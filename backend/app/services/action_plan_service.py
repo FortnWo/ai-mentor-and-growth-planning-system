@@ -403,9 +403,7 @@ def _sync_aggregate_plan_and_main_status(
             if info and pending_milestones is not None:
                 pending_milestones.append(info)
 
-    _sync_secondary_breakdown_statuses(
-        db, plan, items, user_id=user_id, pending_milestones=pending_milestones
-    )
+    _sync_secondary_breakdown_statuses(db, plan, items)
     db.add(plan)
 
 
@@ -413,11 +411,8 @@ def _sync_secondary_breakdown_statuses(
     db: Session,
     plan: ActionPlan,
     items: list[ActionPlanItem],
-    *,
-    user_id: int | None = None,
-    pending_milestones: list[MilestoneFinalizeInfo] | None = None,
 ) -> None:
-    """Soft-aggregate branch node status from linked action plan items."""
+    """Soft-aggregate branch node status from linked action plan items (no milestone)."""
     secondary_nodes = _list_secondary_breakdowns_for_main(db, plan.main_breakdown_id)
     if not secondary_nodes:
         return
@@ -426,7 +421,6 @@ def _sync_secondary_breakdown_statuses(
         linked = [item for item in items if item.breakdown_id == node.id]
         if not linked:
             continue
-        old_status = node.status
         completed = sum(1 for item in linked if item.status == ActionPlanStatus.COMPLETED.value)
         if completed == len(linked):
             node.status = GoalBreakdownStatus.COMPLETED.value
@@ -435,18 +429,6 @@ def _sync_secondary_breakdown_statuses(
         else:
             node.status = GoalBreakdownStatus.PENDING.value
         db.add(node)
-        if user_id:
-            info = milestone_service.handle_breakdown_status_transition(
-                db,
-                user_id,
-                node,
-                old_status,
-                node.status,
-                plan_id=plan.id,
-                main_breakdown_id=plan.main_breakdown_id,
-            )
-            if info and pending_milestones is not None:
-                pending_milestones.append(info)
 
 
 def _upsert_action_plan(
@@ -868,6 +850,7 @@ def update_action_plan_item_completion(
             record_type=GrowthRecordType.ACTION_PLAN.value,
             source_type=GrowthRecordSource.ACTION_PLAN.value,
             source_ref_id=item_id,
+            occurred_at=datetime.utcnow(),
             score=3,
             idempotency_key=idem,
             commit=False,

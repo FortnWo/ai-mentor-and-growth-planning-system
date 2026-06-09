@@ -34,6 +34,45 @@ def _apply_effective_date_range(q, start_date: str | None, end_date: str | None)
     return q
 
 
+def _apply_aggregate_delta(db: Session, user_id: int, record: GrowthRecord, *, sign: int) -> None:
+    from app.models.growth_aggregate import GrowthDailyAggregate
+
+    try:
+        agg_date = _as_date(record.record_date) if record.record_date else date.today()
+    except Exception:
+        agg_date = date.today()
+
+    existing = (
+        db.query(GrowthDailyAggregate)
+        .filter(GrowthDailyAggregate.user_id == user_id, GrowthDailyAggregate.record_date == agg_date)
+        .with_for_update(nowait=False)
+        .first()
+    )
+
+    delta_completed = sign * (1 if record.record_type == GrowthRecordType.ACTION_PLAN.value else 0)
+    delta_milestone = sign * (1 if record.record_type == GrowthRecordType.MILESTONE.value else 0)
+    delta_reflection = sign * (1 if record.record_type == GrowthRecordType.MANUAL.value else 0)
+    delta_score = sign * int(record.score or 0)
+
+    if existing:
+        existing.completed_count = max(0, (existing.completed_count or 0) + delta_completed)
+        existing.milestone_count = max(0, (existing.milestone_count or 0) + delta_milestone)
+        existing.reflection_count = max(0, (existing.reflection_count or 0) + delta_reflection)
+        existing.growth_score = max(0, (existing.growth_score or 0) + delta_score)
+        db.add(existing)
+    elif sign > 0:
+        db.add(
+            GrowthDailyAggregate(
+                user_id=user_id,
+                record_date=agg_date,
+                completed_count=max(0, delta_completed),
+                milestone_count=max(0, delta_milestone),
+                reflection_count=max(0, delta_reflection),
+                growth_score=max(0, delta_score),
+            )
+        )
+
+
 def create_growth_record(
     db: Session,
     user_id: int,
@@ -52,7 +91,18 @@ def create_growth_record(
     commit: bool = True,
     refresh: bool = True,
 ) -> GrowthRecord:
-    # idempotency: if idempotency_key provided, return existing record when present
+    resolved_occurred_at = occurred_at
+    if resolved_occurred_at is None and idempotency_key:
+        resolved_occurred_at = datetime.utcnow()
+
+    if record_date is not None:
+        resolved_record_date = _as_date(record_date)
+    elif resolved_occurred_at is not None:
+        resolved_record_date = resolved_occurred_at.date()
+    else:
+        resolved_record_date = date.today()
+
+    # idempotency: refresh timestamps on active rows; restore soft-deleted rows
     if idempotency_key:
         existing = (
             db.query(GrowthRecord)
@@ -60,14 +110,34 @@ def create_growth_record(
             .first()
         )
         if existing:
+            was_deleted = existing.deleted_at is not None
+            if was_deleted:
+                existing.deleted_at = None
+            existing.title = title
+            if summary is not None:
+                existing.summary = summary
+            if content is not None:
+                existing.content = content
+            existing.record_type = record_type or existing.record_type
+            existing.source_type = source_type or existing.source_type
+            if source_ref_id is not None:
+                existing.source_ref_id = source_ref_id
+            if emotion is not None:
+                existing.emotion = emotion
+            if score is not None:
+                existing.score = score
+            if resolved_occurred_at is not None:
+                existing.occurred_at = resolved_occurred_at
+                existing.record_date = resolved_record_date
+            db.add(existing)
+            db.flush()
+            if was_deleted:
+                _apply_aggregate_delta(db, user_id, existing, sign=1)
+            if commit:
+                db.commit()
+            if refresh:
+                db.refresh(existing)
             return existing
-
-    if record_date is not None:
-        resolved_record_date = _as_date(record_date)
-    elif occurred_at is not None:
-        resolved_record_date = occurred_at.date()
-    else:
-        resolved_record_date = date.today()
 
     record = GrowthRecord(
         user_id=user_id,
@@ -77,7 +147,7 @@ def create_growth_record(
         record_type=(record_type or GrowthRecordType.MANUAL.value),
         source_type=(source_type or GrowthRecordSource.MANUAL.value),
         source_ref_id=source_ref_id,
-        occurred_at=occurred_at,
+        occurred_at=resolved_occurred_at,
         record_date=resolved_record_date,
         emotion=emotion,
         score=score,
@@ -87,47 +157,9 @@ def create_growth_record(
     db.add(record)
     db.flush()
 
-    # Incremental update to daily aggregate in same transaction
     try:
-        from app.models.growth_aggregate import GrowthDailyAggregate
-
-        try:
-            agg_date = _as_date(record.record_date) if record.record_date else date.today()
-        except Exception:
-            agg_date = date.today()
-
-        # try to fetch existing aggregate row
-        existing = (
-            db.query(GrowthDailyAggregate)
-            .filter(GrowthDailyAggregate.user_id == user_id, GrowthDailyAggregate.record_date == agg_date)
-            .with_for_update(nowait=False)
-            .first()
-        )
-
-        delta_completed = 1 if (record.record_type == GrowthRecordType.ACTION_PLAN.value) else 0
-        delta_milestone = 1 if (record.record_type == GrowthRecordType.MILESTONE.value) else 0
-        delta_reflection = 1 if (record.record_type == GrowthRecordType.MANUAL.value) else 0
-        delta_score = int(record.score or 0)
-
-        if existing:
-            existing.completed_count = (existing.completed_count or 0) + delta_completed
-            existing.milestone_count = (existing.milestone_count or 0) + delta_milestone
-            existing.reflection_count = (existing.reflection_count or 0) + delta_reflection
-            existing.growth_score = (existing.growth_score or 0) + delta_score
-            db.add(existing)
-        else:
-            db.add(
-                GrowthDailyAggregate(
-                    user_id=user_id,
-                    record_date=agg_date,
-                    completed_count=delta_completed,
-                    milestone_count=delta_milestone,
-                    reflection_count=delta_reflection,
-                    growth_score=delta_score,
-                )
-            )
+        _apply_aggregate_delta(db, user_id, record, sign=1)
     except Exception:
-        # non-fatal: avoid breaking creation on aggregation issues
         pass
 
     if commit:
@@ -163,30 +195,7 @@ def void_growth_record_by_idempotency_key(
     db.add(rec)
 
     try:
-        from app.models.growth_aggregate import GrowthDailyAggregate
-
-        try:
-            agg_date = _as_date(rec.record_date) if rec.record_date else date.today()
-        except Exception:
-            agg_date = date.today()
-
-        existing = (
-            db.query(GrowthDailyAggregate)
-            .filter(GrowthDailyAggregate.user_id == user_id, GrowthDailyAggregate.record_date == agg_date)
-            .with_for_update(nowait=False)
-            .first()
-        )
-        if existing:
-            delta_completed = -1 if rec.record_type == GrowthRecordType.ACTION_PLAN.value else 0
-            delta_milestone = -1 if rec.record_type == GrowthRecordType.MILESTONE.value else 0
-            delta_reflection = -1 if rec.record_type == GrowthRecordType.MANUAL.value else 0
-            delta_score = -int(rec.score or 0)
-
-            existing.completed_count = max(0, (existing.completed_count or 0) + delta_completed)
-            existing.milestone_count = max(0, (existing.milestone_count or 0) + delta_milestone)
-            existing.reflection_count = max(0, (existing.reflection_count or 0) + delta_reflection)
-            existing.growth_score = max(0, (existing.growth_score or 0) + delta_score)
-            db.add(existing)
+        _apply_aggregate_delta(db, user_id, rec, sign=-1)
     except Exception:
         pass
 
@@ -217,13 +226,13 @@ def list_growth_records(
         q = q.filter(GrowthRecord.source_type == source_type)
 
     total = q.count()
-    # MySQL does not support NULLS LAST; emulate by ordering NULLs last explicitly.
+    effective_time = func.coalesce(
+        GrowthRecord.occurred_at,
+        GrowthRecord.updated_at,
+        GrowthRecord.created_at,
+    )
     items = (
-        q.order_by(
-            GrowthRecord.occurred_at.is_(None).asc(),
-            GrowthRecord.occurred_at.desc(),
-            GrowthRecord.id.desc(),
-        )
+        q.order_by(effective_time.desc(), GrowthRecord.id.desc())
         .offset(offset)
         .limit(limit)
         .all()

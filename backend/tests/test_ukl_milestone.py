@@ -30,7 +30,7 @@ def _mock_milestone_ai(monkeypatch):
     monkeypatch.setattr(
         ai_service,
         "build_milestone_achievement_response",
-        lambda msg: "完成了重要分支节点，离目标更近一步。",
+        lambda msg: "完成了重要阶段节点，离目标更近一步。",
     )
     monkeypatch.setattr(
         ai_service,
@@ -90,10 +90,11 @@ def goal_with_secondary_plan(db_session, sample_user):
     db_session.refresh(goal)
     db_session.refresh(plan)
     db_session.refresh(secondary)
+    db_session.refresh(main)
     return goal, plan, secondary, main
 
 
-def test_secondary_completion_creates_milestone(
+def test_secondary_branch_completion_does_not_create_branch_milestone(
     db_session, sample_user, goal_with_secondary_plan, monkeypatch
 ):
     monkeypatch.setattr(settings, "UKL_ENABLED", True)
@@ -101,7 +102,7 @@ def test_secondary_completion_creates_milestone(
     monkeypatch.setattr(settings, "INSTANT_FEEDBACK_ENABLED", True)
     _mock_milestone_ai(monkeypatch)
 
-    goal, plan, secondary, _main = goal_with_secondary_plan
+    goal, plan, secondary, main = goal_with_secondary_plan
     items = (
         db_session.query(ActionPlanItem)
         .filter(ActionPlanItem.plan_id == plan.id)
@@ -112,29 +113,42 @@ def test_secondary_completion_creates_milestone(
     action_plan_service.update_action_plan_item_completion(
         db_session, sample_user.id, plan.id, items[0].id, completed=True
     )
-    milestones_after_one = (
+    assert (
         db_session.query(GrowthRecord)
         .filter(
             GrowthRecord.user_id == sample_user.id,
             GrowthRecord.record_type == GrowthRecordType.MILESTONE.value,
         )
         .count()
+        == 0
     )
-    assert milestones_after_one == 0
 
     action_plan_service.update_action_plan_item_completion(
         db_session, sample_user.id, plan.id, items[1].id, completed=True
     )
 
     db_session.refresh(secondary)
+    db_session.refresh(main)
     assert secondary.status == GoalBreakdownStatus.COMPLETED.value
+    assert main.status == GoalBreakdownStatus.COMPLETED.value
+
+    assert (
+        db_session.query(GrowthRecord)
+        .filter(
+            GrowthRecord.user_id == sample_user.id,
+            GrowthRecord.record_type == GrowthRecordType.MILESTONE.value,
+            GrowthRecord.source_ref_id == secondary.id,
+        )
+        .count()
+        == 0
+    )
 
     milestone = (
         db_session.query(GrowthRecord)
         .filter(
             GrowthRecord.user_id == sample_user.id,
             GrowthRecord.record_type == GrowthRecordType.MILESTONE.value,
-            GrowthRecord.source_ref_id == secondary.id,
+            GrowthRecord.source_ref_id == main.id,
         )
         .one()
     )
@@ -146,10 +160,10 @@ def test_secondary_completion_creates_milestone(
         sample_user.id,
         SLICE_TYPE_MILESTONE_ACHIEVEMENT,
         ref_type=REF_TYPE_BREAKDOWN,
-        ref_id=secondary.id,
+        ref_id=main.id,
     )
     assert slice_row is not None
-    assert "Branch A" in slice_row.payload or "分支" in slice_row.payload
+    assert "Main Pillar" in slice_row.payload or "主支柱" in slice_row.payload
 
 
 def test_main_node_completion_milestone_level(
@@ -233,9 +247,9 @@ def test_milestone_idempotent_on_repeat_sync(db_session, sample_user, goal_with_
         )
         .count()
     )
-    assert count_first >= 1
+    assert count_first == 1
 
-    secondary_milestones = (
+    assert (
         db_session.query(GrowthRecord)
         .filter(
             GrowthRecord.user_id == sample_user.id,
@@ -243,8 +257,18 @@ def test_milestone_idempotent_on_repeat_sync(db_session, sample_user, goal_with_
             GrowthRecord.source_ref_id == secondary.id,
         )
         .count()
+        == 0
     )
-    assert secondary_milestones == 1
+    assert (
+        db_session.query(GrowthRecord)
+        .filter(
+            GrowthRecord.user_id == sample_user.id,
+            GrowthRecord.record_type == GrowthRecordType.MILESTONE.value,
+            GrowthRecord.source_ref_id == main.id,
+        )
+        .count()
+        == 1
+    )
 
     plan_row = action_plan_service.get_action_plan_for_user(db_session, sample_user.id, plan.id)
     assert plan_row is not None
@@ -260,13 +284,3 @@ def test_milestone_idempotent_on_repeat_sync(db_session, sample_user, goal_with_
         .count()
     )
     assert count_second == count_first
-    assert (
-        db_session.query(GrowthRecord)
-        .filter(
-            GrowthRecord.user_id == sample_user.id,
-            GrowthRecord.record_type == GrowthRecordType.MILESTONE.value,
-            GrowthRecord.source_ref_id == secondary.id,
-        )
-        .count()
-        == 1
-    )

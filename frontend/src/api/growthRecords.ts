@@ -10,18 +10,25 @@ export interface GrowthRecordCreatePayload {
     idempotency_key?: string
 }
 
+export interface GrowthRecordCreated {
+    id: number
+    ai_summary?: string | null
+}
+
 export interface GrowthRecordListItem {
     id: number
     title: string
     summary?: string
+    ai_summary?: string
     record_date?: string
     occurred_at?: string
+    created_at?: string
     record_type: string
     source_type: string
 }
 
 export const createGrowthRecord = (payload: GrowthRecordCreatePayload) =>
-    apiClient.post('/growth-records', payload).then((r) => r.data)
+    apiClient.post<GrowthRecordCreated>('/growth-records', payload).then((r) => r.data)
 
 export const listGrowthRecords = (params = {}) =>
     apiClient.get<GrowthRecordListItem[]>('/growth-records', { params }).then((r) => r.data)

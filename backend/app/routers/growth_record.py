@@ -3,7 +3,6 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from app.core.ai_worker import submit_ai_task
 from app.core.database import get_db
 from app.core.db_session import session_scope
 from app.core.domain_events import DomainEventName
@@ -50,11 +49,6 @@ def create_record(payload: GrowthRecordCreate, background_tasks: BackgroundTasks
         },
         fail_fast=False,
     )
-    # schedule background summary generation (best-effort, non-blocking)
-    try:
-        submit_ai_task(growth_service.process_record_summary_background, record.id)
-    except Exception:
-        pass
     return GrowthRecordRead.model_validate(record)
 
 

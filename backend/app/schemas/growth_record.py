@@ -42,8 +42,10 @@ class GrowthRecordListItem(BaseModel):
     id: int
     title: str
     summary: str | None = None
+    ai_summary: str | None = None
     record_date: date | None = None
     occurred_at: datetime | None = None
+    created_at: datetime | None = None
     record_type: str
     source_type: str
 

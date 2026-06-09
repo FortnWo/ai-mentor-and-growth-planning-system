@@ -8,6 +8,7 @@ import {
     getGrowthStats,
     listGrowthRecords,
     type GrowthDailyTrendPoint,
+    type GrowthRecordListItem,
     type GrowthSummary,
 } from '../api/growthRecords'
 import AppEChart from '../components/charts/AppEChart.vue'
@@ -15,10 +16,10 @@ import ChartCard from '../components/charts/ChartCard.vue'
 import { useChartTheme } from '../composables/useChartTheme'
 import { authState, refreshCurrentUser } from '../stores/auth'
 import { getApiErrorMessage } from '../utils/apiError'
-import { formatLocalDate } from '../utils/localDate'
+import { formatApiDateTime, formatLocalDate, parseApiDateTime } from '../utils/localDate'
 import { buildGrowthBarOption, buildGrowthLineOption } from '../utils/growthTrendChartOptions'
 
-const records = ref([] as any[])
+const records = ref<GrowthRecordListItem[]>([])
 const loading = ref(false)
 const feedback = ref('')
 const summaryFeedback = ref('')
@@ -167,12 +168,55 @@ async function loadRangeStats() {
     }
 }
 
+function recordTimelineKey(record: GrowthRecordListItem): number {
+    const raw = record.occurred_at ?? record.created_at ?? null
+    if (!raw) {
+        return record.record_date ? parseApiDateTime(record.record_date).getTime() : 0
+    }
+    const ms = parseApiDateTime(raw).getTime()
+    return Number.isFinite(ms) ? ms : 0
+}
+
+function sortRecordsForTimeline(items: GrowthRecordListItem[]): GrowthRecordListItem[] {
+    return [...items].sort((a, b) => {
+        const diff = recordTimelineKey(b) - recordTimelineKey(a)
+        return diff !== 0 ? diff : b.id - a.id
+    })
+}
+
+function formatRecordTime(record: GrowthRecordListItem): string {
+    const raw = record.occurred_at ?? record.created_at
+    if (raw) {
+        return formatApiDateTime(raw)
+    }
+    return record.record_date ?? ''
+}
+
+function recordDisplayAiSummary(record: GrowthRecordListItem): string | null {
+    const ai = record.ai_summary?.trim()
+    if (!ai) return null
+    const userSummary = record.summary?.trim()
+    if (userSummary && userSummary === ai) return null
+    return ai
+}
+
+async function pollRecordAiSummary(recordId: number, maxAttempts = 5, delayMs = 2000) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const current = records.value.find((r) => r.id === recordId)
+        if (current?.ai_summary?.trim()) {
+            return
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+        await load()
+    }
+}
+
 async function load() {
     loading.value = true
     listError.value = ''
     try {
         const items = await listGrowthRecords({ limit: 20 })
-        records.value = items
+        records.value = sortRecordsForTimeline(items)
     } catch (err) {
         records.value = []
         listError.value = getApiErrorMessage(err, '成长记录列表加载失败。')
@@ -190,11 +234,12 @@ async function submit() {
             summary: form.summary.trim() || undefined,
             idempotency_key: `ui-${Date.now()}`,
         }
-        await createGrowthRecord(payload)
+        const created = await createGrowthRecord(payload)
         feedback.value = '已记录今天的小胜利 🎉'
         form.title = ''
         form.summary = ''
         await load()
+        await pollRecordAiSummary(created.id)
         await loadTrend()
         await loadRangeStats()
     } catch (err) {
@@ -404,11 +449,9 @@ onMounted(async () => {
                     <ul class="record-list">
                         <li v-for="r in records" :key="r.id" class="record-item">
                             <h3>{{ r.title }}</h3>
-                            <p class="muted">
-                                {{ r.record_date ?? (r.occurred_at ? new Date(r.occurred_at).toLocaleString() : '') }}
-                            </p>
+                            <p class="muted">{{ formatRecordTime(r) }}</p>
                             <p v-if="r.summary">{{ r.summary }}</p>
-                            <p v-if="r.ai_summary" class="muted">AI 摘要：{{ r.ai_summary }}</p>
+                            <p v-if="recordDisplayAiSummary(r)" class="muted">AI 摘要：{{ recordDisplayAiSummary(r) }}</p>
                         </li>
                     </ul>
                 </div>

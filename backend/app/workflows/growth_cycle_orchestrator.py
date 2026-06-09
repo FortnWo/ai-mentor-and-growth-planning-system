@@ -273,6 +273,13 @@ def _on_growth_updated(event: DomainEvent) -> None:
     record_id = event.payload.get("record_id")
     if not isinstance(record_id, int):
         return
+    try:
+        from app.core.ai_worker import submit_ai_task
+        from app.services import growth_service
+
+        submit_ai_task(growth_service.process_record_summary_background, record_id)
+    except Exception:
+        logger.exception("Failed to schedule AI summary for record_id=%s", record_id)
     with session_scope() as db:
         from app.services.ukl_growth_service import ingest_growth_journal_for_record
 
