@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from app.core.config import settings
 from app.core.db_session import session_scope
 from app.core.domain_events import DomainEvent, DomainEventName
 from app.core.event_bus import event_bus
@@ -17,6 +16,7 @@ import app.services.breakdown_service as breakdown_service
 import app.services.chat_service as chat_service
 import app.services.goal_service as goal_service
 import app.services.plan_service as plan_service
+import app.services.profile_extraction_service as profile_extraction_service
 import app.services.profile_service as profile_service
 import app.services.ukl_prompt_service as ukl_prompt_service
 
@@ -59,38 +59,12 @@ def _on_chat_message(event: DomainEvent) -> None:
         logger.warning("Skip chat event without valid session_id trace_id=%s", event.trace_id)
         return
 
-    extraction_input: str | None = None
-    with session_scope() as db:
-        messages = profile_service.list_recent_messages_for_session(
-            db,
-            session_id=session_id,
-            limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
-        )
-        extraction_input = profile_service.build_extraction_input(messages)
-
-    if not extraction_input:
-        return
-
-    raw_result = chat_service.build_profile_extraction_response(extraction_input)
-    extraction_result = profile_service.parse_extraction_result(raw_result)
-
-    profile_id: int
-    with session_scope() as db:
-        profile = profile_service.apply_extraction_result_for_user(
-            db,
-            user_id=event.user_id,
-            result=extraction_result,
-        )
-        profile_id = profile.id
-
-    _publish_followup_event(
-        DomainEventName.ON_PROFILE_UPDATED,
-        source_event=event,
-        payload={
-            "session_id": session_id,
-            "profile_id": profile_id,
-            "extracted": extraction_result.model_dump(),
-        },
+    assistant_message_id = event.payload.get("assistant_message_id")
+    profile_extraction_service.schedule_profile_extraction_from_chat(
+        user_id=event.user_id,
+        session_id=session_id,
+        assistant_message_id=assistant_message_id if isinstance(assistant_message_id, int) else None,
+        trace_id=event.trace_id,
     )
 
 

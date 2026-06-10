@@ -24,7 +24,67 @@ def sample_user(db_session):
     return user
 
 
-def test_on_chat_message_chain_does_not_raise(db_session, sample_user, monkeypatch):
+def test_on_chat_message_schedules_profile_extraction(db_session, sample_user, monkeypatch):
+    monkeypatch.setattr(settings, "UKL_ENABLED", False)
+    monkeypatch.setattr(settings, "PROFILE_EXTRACTION_ON_DEMAND_ENABLED", False)
+
+    session = ChatSession(user_id=sample_user.id, title="Test")
+    db_session.add(session)
+    db_session.flush()
+
+    user_message = ChatMessage(
+        session_id=session.id,
+        role=MessageRole.USER,
+        content="我想学习数据分析，目标是三个月内入门。",
+    )
+    db_session.add(user_message)
+    db_session.flush()
+
+    assistant_message = ChatMessage(
+        session_id=session.id,
+        role=MessageRole.ASSISTANT,
+        content="很好，我们可以一起制定计划。",
+    )
+    db_session.add(assistant_message)
+    db_session.commit()
+
+    scheduled_calls: list[dict] = []
+
+    def capture_schedule(**kwargs):
+        scheduled_calls.append(kwargs)
+        from app.services.profile_extraction_service import ProfileExtractionScheduleDecision
+
+        return ProfileExtractionScheduleDecision(True, None)
+
+    monkeypatch.setattr(
+        orchestrator.profile_extraction_service,
+        "schedule_profile_extraction_from_chat",
+        capture_schedule,
+    )
+
+    event = build_domain_event(
+        event_name=DomainEventName.ON_CHAT_MESSAGE.value,
+        user_id=sample_user.id,
+        payload={
+            "session_id": session.id,
+            "assistant_message_id": assistant_message.id,
+        },
+    )
+
+    orchestrator._on_chat_message(event)
+
+    assert len(scheduled_calls) == 1
+    assert scheduled_calls[0]["user_id"] == sample_user.id
+    assert scheduled_calls[0]["session_id"] == session.id
+    assert scheduled_calls[0]["assistant_message_id"] == assistant_message.id
+    assert scheduled_calls[0]["trace_id"] == event.trace_id
+
+
+def test_run_profile_extraction_from_chat_publishes_profile_updated(
+    db_session,
+    sample_user,
+    monkeypatch,
+):
     monkeypatch.setattr(settings, "UKL_ENABLED", False)
 
     session = ChatSession(user_id=sample_user.id, title="Test")
@@ -40,7 +100,7 @@ def test_on_chat_message_chain_does_not_raise(db_session, sample_user, monkeypat
     )
     db_session.commit()
 
-    from app.services import chat_service, goal_service
+    from app.services import chat_service, goal_service, profile_extraction_service
 
     monkeypatch.setattr(
         chat_service,
@@ -63,24 +123,20 @@ def test_on_chat_message_chain_does_not_raise(db_session, sample_user, monkeypat
     )
     monkeypatch.setattr(goal_service, "list_goals_for_user", lambda db, uid: [])
 
-    event = build_domain_event(
-        event_name=DomainEventName.ON_CHAT_MESSAGE.value,
+    published: list[str] = []
+
+    def capture_publish(*, event_name, **kwargs):
+        published.append(event_name)
+
+    monkeypatch.setattr(profile_extraction_service.event_bus, "publish", capture_publish)
+
+    profile_extraction_service.run_profile_extraction_from_chat(
         user_id=sample_user.id,
-        payload={"session_id": session.id},
+        session_id=session.id,
+        trace_id="trace-run",
     )
 
-    orchestrator._on_chat_message(event)
-    orchestrator._on_profile_updated(
-        build_domain_event(
-            event_name=DomainEventName.ON_PROFILE_UPDATED.value,
-            user_id=sample_user.id,
-            payload={
-                "session_id": session.id,
-                "profile_id": 1,
-                "extracted": {"goals": ["三个月入门数据分析"]},
-            },
-        )
-    )
+    assert DomainEventName.ON_PROFILE_UPDATED.value in published
 
 
 def test_orchestrator_handlers_import_profile_service():
