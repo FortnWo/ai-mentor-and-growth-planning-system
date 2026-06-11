@@ -46,90 +46,55 @@ async function submit() {
 
 <template>
   <div class="page auth-page">
-    <section class="auth-shell glass-card hero-frame reveal">
-      <div class="auth-copy">
-        <p class="page-kicker">安全访问</p>
-        <h1 class="page-title">登录你的导师工作台。</h1>
-        <p class="page-subtitle">
-          学生使用 10 位学号登录，管理员使用分配的用户名。界面为快速回到工作台而设计。
-        </p>
-
-        <div class="grid-3 auth-highlights">
-          <article class="stat-card">
-            <p class="stat-label">快速进入</p>
-            <p class="stat-value">一键</p>
-            <p class="stat-note">快速返回你的工作台</p>
-          </article>
-
-          <article class="stat-card">
-            <p class="stat-label">身份模型</p>
-            <p class="stat-value">角色区分</p>
-            <p class="stat-note">学生与管理员流程分离</p>
-          </article>
-
-          <article class="stat-card">
-            <p class="stat-label">安全会话</p>
-            <p class="stat-value">JWT</p>
-            <p class="stat-note">基于令牌的身份认证</p>
-          </article>
+    <div class="auth-panel reveal">
+      <div class="title-row">
+        <div>
+          <p class="eyebrow">登录</p>
+          <h2 class="section-title">欢迎回来</h2>
         </div>
+
+        <span class="chip chip--neutral">受保护</span>
       </div>
 
-      <div class="auth-panel">
-        <div class="title-row">
-          <div>
-            <p class="eyebrow">登录</p>
-            <h2 class="section-title">欢迎回来</h2>
-          </div>
+      <form class="auth-form" @submit.prevent="submit">
+        <label class="field">
+          <span class="label">用户名</span>
+          <input v-model="form.username" class="input" autocomplete="username" />
+        </label>
 
-          <span class="chip chip--neutral">受保护</span>
-        </div>
+        <label class="field">
+          <span class="label">密码</span>
+          <input v-model="form.password" class="input" type="password" autocomplete="current-password" />
+        </label>
 
-        <form class="auth-form" @submit.prevent="submit">
-          <label class="field">
-            <span class="label">用户名</span>
-            <input v-model="form.username" class="input" autocomplete="username" />
-          </label>
+        <button class="button button--primary" :disabled="submitting" type="submit">登录</button>
+      </form>
 
-          <label class="field">
-            <span class="label">密码</span>
-            <input v-model="form.password" class="input" type="password" autocomplete="current-password" />
-          </label>
+      <p v-if="error" class="feedback feedback--error">{{ error }}</p>
 
-          <button class="button button--primary" :disabled="submitting" type="submit">登录</button>
-        </form>
-
-        <p v-if="error" class="feedback feedback--error">{{ error }}</p>
-
-        <div class="auth-footer">
-          <RouterLink class="forgot-link" to="/forgot-password">忘记密码？</RouterLink>
-        </div>
+      <div class="auth-footer">
+        <RouterLink class="forgot-link" to="/forgot-password">忘记密码？</RouterLink>
       </div>
-    </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .auth-page {
-  width: min(1120px, 100%);
-  margin: 0 auto;
-}
-
-.auth-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 420px);
-  gap: 1rem;
-  padding: 1.2rem;
-}
-
-.auth-copy,
-.auth-form {
-  display: grid;
-  gap: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - var(--app-header-height, 4rem) - 3rem);
+  width: 100%;
 }
 
 .auth-panel {
-  align-self: center;
+  width: min(420px, 100%);
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
 }
 
 .section-title {
@@ -153,11 +118,5 @@ async function submit() {
 
 .forgot-link:hover {
   color: var(--primary);
-}
-
-@media (max-width: 1024px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
