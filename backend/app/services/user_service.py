@@ -185,6 +185,9 @@ def update_user(db: Session, user_id: int, user_in: UserUpdate) -> User | None:
     if "password" in update_data and update_data["password"]:
         db_user.password_hash = hash_password(update_data["password"])
 
+    if "phone" in update_data:
+        _validate_phone(update_data["phone"])
+
     for field in ("full_name", "major", "year_of_study", "bio", "is_active", "phone", "address", "enrollment_year"):
         if field in update_data:
             setattr(db_user, field, update_data[field])

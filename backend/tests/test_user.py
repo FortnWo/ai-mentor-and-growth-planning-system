@@ -142,12 +142,17 @@ def test_admin_can_update_and_delete_user(client):
             "full_name": "Updated Student",
             "year_of_study": 4,
             "bio": "Updated bio",
+            "enrollment_year": 2022,
+            "phone": "13800138000",
         },
         headers=admin_headers(client),
     )
     assert update_response.status_code == 200
-    assert update_response.json()["full_name"] == "Updated Student"
-    assert update_response.json()["year_of_study"] == 4
+    body = update_response.json()
+    assert body["full_name"] == "Updated Student"
+    assert body["year_of_study"] == 4
+    assert body["enrollment_year"] == 2022
+    assert body["phone"] == "13800138000"
 
     delete_response = client.delete(f"/admin/users/{user_id}", headers=admin_headers(client))
     assert delete_response.status_code == 204

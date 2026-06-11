@@ -65,6 +65,9 @@ class UserUpdate(BaseModel):
     major: str | None = Field(default=None, max_length=255)
     year_of_study: int | None = Field(default=None, ge=1, le=12)
     bio: str | None = None
+    phone: str | None = Field(default=None, max_length=20)
+    address: str | None = Field(default=None, max_length=500)
+    enrollment_year: int | None = Field(default=None, ge=1900, le=2100)
 
 
 class InfoUpdate(BaseModel):
