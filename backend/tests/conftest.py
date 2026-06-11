@@ -65,6 +65,7 @@ def sync_ai_worker(monkeypatch):
         "app.routers.growth_record",
         "app.services.chat_context_service",
         "app.services.action_plan_service",
+        "app.services.profile_extraction_service",
         "app.workflows.growth_cycle_orchestrator",
     ):
         try:

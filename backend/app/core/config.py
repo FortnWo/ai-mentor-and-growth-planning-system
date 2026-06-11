@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     )
     PROFILE_EXTRACTION_ENABLED: bool = True
     PROFILE_EXTRACTION_MESSAGE_WINDOW: int = 14
+    PROFILE_EXTRACTION_MIN_INTERVAL_MINUTES: int = 5
+    PROFILE_EXTRACTION_BURST_USER_TURNS: int = 3
+    PROFILE_EXTRACTION_ON_DEMAND_ENABLED: bool = True
+    PROFILE_EXTRACTION_MIN_USER_MESSAGE_CHARS: int = 12
     PROFILE_EXTRACTION_SYSTEM_PROMPT: str = (
         "你是画像提取助手。从对话中提取用户画像信号，仅输出严格 JSON。"
         "键名必须为英文：interests、skills、goals、study_habits、personality、preferences。"

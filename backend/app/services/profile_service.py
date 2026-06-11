@@ -363,28 +363,31 @@ def parse_extraction_result(raw_text: str) -> ProfileExtractionResult:
     return ProfileExtractionResult(**normalized_payload)
 
 
+def count_user_messages_since(
+    db: Session,
+    user_id: int,
+    since: datetime | None,
+) -> int:
+    query = (
+        db.query(ChatMessage)
+        .join(ChatSession, ChatSession.id == ChatMessage.session_id)
+        .filter(
+            ChatSession.user_id == user_id,
+            ChatMessage.role == MessageRole.USER,
+        )
+    )
+    if since is not None:
+        query = query.filter(ChatMessage.created_at > since)
+    return query.count()
+
+
 def refresh_profile_from_chat_history(
     db: Session,
     user_id: int,
 ) -> tuple[UserProfile, ProfileExtractionResult]:
-    if not settings.PROFILE_EXTRACTION_ENABLED:
-        raise ValueError("画像抽取功能未启用")
+    from app.services import profile_extraction_service
 
-    messages = list_recent_messages_for_user(
-        db,
-        user_id=user_id,
-        limit=settings.PROFILE_EXTRACTION_MESSAGE_WINDOW,
-    )
-    if not messages:
-        raise ValueError("没有可用于抽取的聊天记录")
-
-    from app.services import chat_service
-
-    prompt = build_extraction_input(messages)
-    raw_output = chat_service.build_profile_extraction_response(prompt)
-    extraction = parse_extraction_result(raw_output)
-    profile = apply_extraction_result_for_user(db, user_id=user_id, result=extraction)
-    return profile, extraction
+    return profile_extraction_service.run_profile_extraction_for_user(db, user_id, force=True)
 
 
 def list_recent_messages_for_session(db: Session, session_id: int, limit: int) -> list[ChatMessage]:
