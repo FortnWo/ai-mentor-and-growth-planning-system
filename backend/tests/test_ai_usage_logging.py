@@ -26,7 +26,7 @@ def _patch_openai_create(monkeypatch, response=None):
     mock_client = MagicMock()
     mock_client.responses.create.return_value = response
 
-    monkeypatch.setattr(ai_service, "_get_ai_client", lambda: mock_client)
+    monkeypatch.setattr(ai_service, "_get_ai_client", lambda db=None: mock_client)
     monkeypatch.setattr(ai_service.settings, "LLM_MODEL", "gpt-test", raising=False)
     return mock_client
 

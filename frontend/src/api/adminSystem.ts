@@ -38,6 +38,12 @@ export const getAiUsageLogs = (
     })
     .then((response) => response.data)
 
+export type LlmConfigSource = {
+  llm_api_key: 'env' | 'db' | 'unset'
+  llm_api_base_url: 'env' | 'db' | 'unset'
+  llm_model: 'env' | 'db' | 'unset'
+}
+
 export type AiConfigResponse = {
   llm_api_key_set: boolean
   llm_api_key_masked: string | null
@@ -46,6 +52,11 @@ export type AiConfigResponse = {
   llm_system_prompt: string | null
   admin_llm_system_prompt: string | null
   active_preset_id: string | null
+  effective_llm_api_key_set: boolean
+  effective_llm_api_key_masked: string | null
+  effective_llm_api_base_url: string | null
+  effective_llm_model: string | null
+  llm_config_source: LlmConfigSource
 }
 
 export type LlmPreset = {

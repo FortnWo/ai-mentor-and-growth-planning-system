@@ -19,7 +19,7 @@ import hashlib
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
@@ -161,6 +161,99 @@ def resolve_llm_system_prompt(db: Session | None = None) -> str:
 def resolve_admin_llm_system_prompt(db: Session | None = None) -> str:
     """Effective admin assistant chat system prompt."""
     return _resolve_prompt(db, "admin_llm_system_prompt", "ADMIN_LLM_SYSTEM_PROMPT")
+
+
+def _non_empty_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _resolve_env_then_db(
+    db: Session | None,
+    db_key: str,
+    settings_attr: str,
+) -> str | None:
+    """Resolve optional config: .env / settings > DB > unset."""
+    from sqlalchemy import inspect
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.config import settings
+
+    env_value = _non_empty_str(getattr(settings, settings_attr, None))
+    if env_value:
+        return env_value
+
+    try:
+        with _db_ctx(db) as session:
+            if session.bind is not None and "system_config" not in inspect(session.bind).get_table_names():
+                return None
+            return _non_empty_str(get(session, db_key))
+    except SQLAlchemyError:
+        logger.debug("config resolve: falling back for %s", db_key, exc_info=True)
+    return None
+
+
+def _llm_config_source_for(
+    db: Session | None,
+    db_key: str,
+    settings_attr: str,
+) -> Literal["env", "db", "unset"]:
+    from sqlalchemy import inspect
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.core.config import settings
+
+    if _non_empty_str(getattr(settings, settings_attr, None)):
+        return "env"
+
+    try:
+        with _db_ctx(db) as session:
+            if session.bind is not None and "system_config" not in inspect(session.bind).get_table_names():
+                return "unset"
+            if _non_empty_str(get(session, db_key)):
+                return "db"
+    except SQLAlchemyError:
+        logger.debug("config source: falling back for %s", db_key, exc_info=True)
+    return "unset"
+
+
+def resolve_llm_api_key(db: Session | None = None) -> str | None:
+    return _resolve_env_then_db(db, "llm_api_key", "LLM_API_KEY")
+
+
+def resolve_llm_api_base_url(db: Session | None = None) -> str | None:
+    return _resolve_env_then_db(db, "llm_api_base_url", "LLM_API_BASE_URL")
+
+
+def resolve_llm_model(db: Session | None = None) -> str | None:
+    return _resolve_env_then_db(db, "llm_model", "LLM_MODEL")
+
+
+def is_llm_configured(db: Session | None = None) -> bool:
+    return bool(
+        resolve_llm_api_key(db)
+        and resolve_llm_api_base_url(db)
+        and resolve_llm_model(db)
+    )
+
+
+def get_effective_ai_config(db: Session | None = None) -> dict:
+    api_key = resolve_llm_api_key(db)
+    return {
+        "llm_api_key": api_key,
+        "llm_api_base_url": resolve_llm_api_base_url(db),
+        "llm_model": resolve_llm_model(db),
+    }
+
+
+def get_llm_config_source(db: Session | None = None) -> dict[str, Literal["env", "db", "unset"]]:
+    return {
+        "llm_api_key": _llm_config_source_for(db, "llm_api_key", "LLM_API_KEY"),
+        "llm_api_base_url": _llm_config_source_for(db, "llm_api_base_url", "LLM_API_BASE_URL"),
+        "llm_model": _llm_config_source_for(db, "llm_model", "LLM_MODEL"),
+    }
 
 
 def _load_llm_presets_raw(db: Session) -> list[dict[str, Any]]:

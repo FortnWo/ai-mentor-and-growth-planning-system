@@ -34,6 +34,15 @@ const aiConfig = reactive({
   admin_llm_system_prompt: '',
   llm_api_key_set: false,
   llm_api_key_masked: null as string | null,
+  effective_llm_api_key_set: false,
+  effective_llm_api_key_masked: null as string | null,
+  effective_llm_api_base_url: '',
+  effective_llm_model: '',
+  llm_config_source: {
+    llm_api_key: 'unset' as 'env' | 'db' | 'unset',
+    llm_api_base_url: 'unset' as 'env' | 'db' | 'unset',
+    llm_model: 'unset' as 'env' | 'db' | 'unset',
+  },
   active_preset_id: null as string | null,
 })
 
@@ -97,6 +106,11 @@ async function loadAiConfig() {
     const d = await getAiConfig()
     aiConfig.llm_api_key_set = d.llm_api_key_set
     aiConfig.llm_api_key_masked = d.llm_api_key_masked
+    aiConfig.effective_llm_api_key_set = d.effective_llm_api_key_set
+    aiConfig.effective_llm_api_key_masked = d.effective_llm_api_key_masked
+    aiConfig.effective_llm_api_base_url = d.effective_llm_api_base_url ?? ''
+    aiConfig.effective_llm_model = d.effective_llm_model ?? ''
+    aiConfig.llm_config_source = { ...d.llm_config_source }
     aiConfig.active_preset_id = d.active_preset_id
     aiConfig.llm_api_base_url = d.llm_api_base_url ?? ''
     aiConfig.llm_model = d.llm_model ?? ''
@@ -376,10 +390,11 @@ onMounted(async () => {
 
       <aside class="ai-config-layout__aside">
         <AiConfigStatusCard
-          :model="aiConfig.llm_model || null"
-          :base-url="aiConfig.llm_api_base_url || null"
-          :key-masked="aiConfig.llm_api_key_masked"
-          :key-set="aiConfig.llm_api_key_set"
+          :model="aiConfig.effective_llm_model || null"
+          :base-url="aiConfig.effective_llm_api_base_url || null"
+          :key-masked="aiConfig.effective_llm_api_key_masked"
+          :key-set="aiConfig.effective_llm_api_key_set"
+          :config-source="aiConfig.llm_config_source"
         />
         <LlmPresetPanel
           :active-preset-id="aiConfig.active_preset_id"

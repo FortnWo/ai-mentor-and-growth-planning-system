@@ -160,7 +160,7 @@ def test_profile_extraction_not_rate_limited(monkeypatch, db_session):
         usage=SimpleNamespace(input_tokens=1, output_tokens=1),
         output=[],
     )
-    monkeypatch.setattr(ai_service, "_get_ai_client", lambda: mock_client)
+    monkeypatch.setattr(ai_service, "_get_ai_client", lambda db=None: mock_client)
     monkeypatch.setattr(ai_service.settings, "LLM_MODEL", "gpt-test", raising=False)
 
     result = ai_service.build_profile_extraction_response("extract profile")
@@ -179,7 +179,7 @@ def test_invoke_ai_chat_syncs_risk_flag_after_call(monkeypatch, db_session):
         usage=SimpleNamespace(input_tokens=1, output_tokens=1),
         output=[],
     )
-    monkeypatch.setattr(ai_service, "_get_ai_client", lambda: mock_client)
+    monkeypatch.setattr(ai_service, "_get_ai_client", lambda db=None: mock_client)
     monkeypatch.setattr(ai_service.settings, "LLM_MODEL", "gpt-test", raising=False)
 
     ai_service.build_chat_response("hello", db=db_session, user_id=user.id)

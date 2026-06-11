@@ -1,5 +1,6 @@
 """Tests for LLM preset management and masked AI config read."""
 
+from app.core.config import settings
 from app.services import system_config_service as scs
 
 from tests.test_user import admin_headers, make_student_payload
@@ -136,6 +137,42 @@ def test_max_presets_limit(client):
         headers=headers,
     )
     assert overflow.status_code == 400
+
+
+def test_activate_preset_effective_when_env_empty(client, db_session, monkeypatch):
+    monkeypatch.setattr(settings, "LLM_API_KEY", None)
+    monkeypatch.setattr(settings, "LLM_API_BASE_URL", None)
+    monkeypatch.setattr(settings, "LLM_MODEL", None)
+    headers = admin_headers(client)
+
+    create_response = client.post(
+        "/admin/system/llm-presets",
+        json={
+            "name": "DB Only",
+            "llm_api_key": "sk-preset-only-key-12345678",
+            "llm_api_base_url": "https://preset.example.com/v1",
+            "llm_model": "preset-model",
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    preset_id = create_response.json()["id"]
+
+    activate_response = client.post(
+        f"/admin/system/llm-presets/{preset_id}/activate",
+        headers=headers,
+    )
+    assert activate_response.status_code == 200
+
+    assert scs.resolve_llm_model(db_session) == "preset-model"
+    assert scs.resolve_llm_api_base_url(db_session) == "https://preset.example.com/v1"
+    assert scs.is_llm_configured(db_session) is True
+
+    cfg = client.get("/admin/system/ai-config", headers=headers).json()
+    assert cfg["effective_llm_model"] == "preset-model"
+    assert cfg["effective_llm_api_base_url"] == "https://preset.example.com/v1"
+    assert cfg["effective_llm_api_key_set"] is True
+    assert cfg["llm_config_source"]["llm_model"] == "db"
 
 
 def test_limited_admin_cannot_manage_llm_presets(client):

@@ -15,22 +15,32 @@ class AIServiceError(RuntimeError):
     """Raised when AI provider calls fail at the service layer."""
 
 
-def _get_ai_client() -> OpenAI:
-    if not settings.LLM_API_KEY:
+def _get_ai_client(db=None) -> OpenAI:
+    from app.services.system_config_service import (
+        resolve_llm_api_base_url,
+        resolve_llm_api_key,
+    )
+
+    api_key = resolve_llm_api_key(db)
+    base_url = resolve_llm_api_base_url(db)
+    if not api_key:
         raise RuntimeError("LLM_API_KEY is not configured")
-    if not settings.LLM_API_BASE_URL:
+    if not base_url:
         raise RuntimeError("LLM_API_BASE_URL is not configured")
 
     return OpenAI(
-        base_url=settings.LLM_API_BASE_URL,
-        api_key=settings.LLM_API_KEY,
+        base_url=base_url,
+        api_key=api_key,
     )
 
 
-def _get_model() -> str:
-    if not settings.LLM_MODEL:
+def _get_model(db=None) -> str:
+    from app.services.system_config_service import resolve_llm_model
+
+    model = resolve_llm_model(db)
+    if not model:
         raise RuntimeError("LLM_MODEL is not configured")
-    return settings.LLM_MODEL
+    return model
 
 
 def extract_response_text(response: Any) -> str:
@@ -128,8 +138,8 @@ def _invoke_ai(
                 rate_limit_user_id = rate_limit_user.id
 
     try:
-        client = _get_ai_client()
-        model = _get_model()
+        client = _get_ai_client(db)
+        model = _get_model(db)
         response = client.responses.create(
             model=model,
             instructions=instructions,
@@ -223,8 +233,8 @@ def build_admin_chat_response(message: str, db=None, *, user_id: int | None = No
             admin_prompt = resolve_admin_llm_system_prompt(prompt_db)
 
     try:
-        client = _get_ai_client()
-        model = _get_model()
+        client = _get_ai_client(db)
+        model = _get_model(db)
     except RuntimeError:
         raise
 
@@ -393,7 +403,7 @@ def build_memory_fact_extraction_response(message: str) -> str:
     )
 
 
-def create_embedding(text: str) -> list[float]:
+def create_embedding(text: str, *, db=None) -> list[float]:
     content = (text or "").strip()
     if not content:
         return []
@@ -402,7 +412,7 @@ def create_embedding(text: str) -> list[float]:
         raise RuntimeError("EMBEDDING_MODEL is not configured")
 
     try:
-        client = _get_ai_client()
+        client = _get_ai_client(db)
         response = client.embeddings.create(
             model=settings.EMBEDDING_MODEL,
             input=content,

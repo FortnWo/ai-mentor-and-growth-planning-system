@@ -25,7 +25,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -53,6 +53,12 @@ def _llm_preset_http_error(exc: scs.LlmPresetError) -> HTTPException:
 
 # ── AI Config ─────────────────────────────────────────────────────────────────
 
+class LlmConfigSource(BaseModel):
+    llm_api_key: Literal["env", "db", "unset"]
+    llm_api_base_url: Literal["env", "db", "unset"]
+    llm_model: Literal["env", "db", "unset"]
+
+
 class AIConfigRead(BaseModel):
     llm_api_key_set: bool
     llm_api_key_masked: str | None
@@ -61,6 +67,11 @@ class AIConfigRead(BaseModel):
     llm_system_prompt: str | None
     admin_llm_system_prompt: str | None
     active_preset_id: str | None
+    effective_llm_api_key_set: bool
+    effective_llm_api_key_masked: str | None
+    effective_llm_api_base_url: str | None
+    effective_llm_model: str | None
+    llm_config_source: LlmConfigSource
 
 
 class AIConfigUpdate(BaseModel):
@@ -77,7 +88,10 @@ def get_ai_config(
     db: Session = Depends(get_db),
 ):
     cfg = scs.get_ai_config(db)
+    effective = scs.get_effective_ai_config(db)
+    sources = scs.get_llm_config_source(db)
     api_key = cfg.get("llm_api_key")
+    effective_key = effective.get("llm_api_key")
     return AIConfigRead(
         llm_api_key_set=bool(api_key),
         llm_api_key_masked=scs.mask_secret(api_key) if api_key else None,
@@ -86,6 +100,11 @@ def get_ai_config(
         llm_system_prompt=cfg.get("llm_system_prompt"),
         admin_llm_system_prompt=cfg.get("admin_llm_system_prompt"),
         active_preset_id=cfg.get("llm_active_preset_id"),
+        effective_llm_api_key_set=bool(effective_key),
+        effective_llm_api_key_masked=scs.mask_secret(effective_key) if effective_key else None,
+        effective_llm_api_base_url=effective.get("llm_api_base_url"),
+        effective_llm_model=effective.get("llm_model"),
+        llm_config_source=LlmConfigSource(**sources),
     )
 
 

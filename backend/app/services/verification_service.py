@@ -2,7 +2,7 @@
 Verification code service for password reset.
 
 Generates, stores, validates, and expires codes.
-Default code length, TTL, and resend interval come from settings (configurable in Phase 5).
+TTL, resend interval, and code length come from system_config (admin panel).
 """
 from __future__ import annotations
 
@@ -12,39 +12,28 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.models.verification_code import VerificationCode
-
-
-_DEFAULT_CODE_LENGTH = 6
-_DEFAULT_EXPIRE_MINUTES = 10
-_DEFAULT_RESEND_INTERVAL_SECONDS = 60
+from app.services import system_config_service as scs
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _code_length() -> int:
-    return getattr(settings, "VERIFICATION_CODE_LENGTH", _DEFAULT_CODE_LENGTH)
+def _verification_settings(db: Session) -> dict:
+    return scs.get_verification_config(db)
 
 
-def _expire_minutes() -> int:
-    return getattr(settings, "VERIFICATION_CODE_EXPIRE_MINUTES", _DEFAULT_EXPIRE_MINUTES)
-
-
-def _resend_interval_seconds() -> int:
-    return getattr(settings, "VERIFICATION_CODE_RESEND_INTERVAL_SECONDS", _DEFAULT_RESEND_INTERVAL_SECONDS)
-
-
-def _generate_code() -> str:
+def _generate_code(db: Session) -> str:
     digits = string.digits
-    return "".join(random.choices(digits, k=_code_length()))
+    length = _verification_settings(db)["code_length"]
+    return "".join(random.choices(digits, k=length))
 
 
 def can_send_code(db: Session, user_id: int, code_type: str) -> tuple[bool, int]:
     """Return (can_send, seconds_remaining_until_allowed)."""
-    interval = _resend_interval_seconds()
+    cfg = _verification_settings(db)
+    interval = cfg["resend_interval_seconds"]
     cutoff = _utcnow() - timedelta(seconds=interval)
 
     last = (
@@ -68,6 +57,7 @@ def can_send_code(db: Session, user_id: int, code_type: str) -> tuple[bool, int]
 def create_code(db: Session, user_id: int, code_type: str) -> VerificationCode:
     """Generate a fresh code and persist it. Invalidates previous unused codes of the same type."""
     now = _utcnow()
+    expire_minutes = _verification_settings(db)["expire_minutes"]
 
     # Invalidate prior unexpired codes for this user+type by setting them as used
     db.query(VerificationCode).filter(
@@ -80,8 +70,8 @@ def create_code(db: Session, user_id: int, code_type: str) -> VerificationCode:
     record = VerificationCode(
         user_id=user_id,
         type=code_type,
-        code=_generate_code(),
-        expires_at=now + timedelta(minutes=_expire_minutes()),
+        code=_generate_code(db),
+        expires_at=now + timedelta(minutes=expire_minutes),
     )
     db.add(record)
     db.commit()

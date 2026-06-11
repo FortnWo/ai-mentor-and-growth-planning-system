@@ -251,7 +251,9 @@ def _upsert_pattern_trait(
 
 
 def _llm_summary_enabled() -> bool:
-    return bool(settings.LLM_API_KEY and settings.LLM_API_BASE_URL and settings.LLM_MODEL)
+    from app.services import system_config_service as scs
+
+    return scs.is_llm_configured()
 
 
 def _generate_portrait_summary(traits: list[UserTraitRead]) -> str:
