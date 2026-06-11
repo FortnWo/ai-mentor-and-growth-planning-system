@@ -51,7 +51,7 @@ mysql -u root -p < database/schema.sql
 
 `schema.sql` 已包含当前版本所需的全部表结构（含 UKL、`memory_embedding` 等）。
 
-若数据库在较早版本创建，可按顺序执行增量迁移；或在启动后端时由 `ensure_database_schema` 自动补齐缺失表 / 列（当前自动处理 005–008）：
+若数据库在较早版本创建，可按顺序执行增量迁移；或在启动后端时由 `ensure_database_schema` 自动补齐缺失表 / 列（当前自动处理 005–009）：
 
 
 缺少 `users.risk_flag` 等列时，依赖用户表的 API 会返回 500（日志中为 SQLAlchemy `OperationalError` / e3q8），前端表现为请求超时或失败。
