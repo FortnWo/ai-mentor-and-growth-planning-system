@@ -5,6 +5,7 @@ const ACTION_PLAN_REQUEST_TIMEOUT = 60_000
 export interface ActionPlan {
     id: number
     goal_id: number
+    main_breakdown_id: number
     title: string
     summary: string | null
     status: string
@@ -37,13 +38,15 @@ export interface ActionPlanCreatePayload {
     goal_id: number
 }
 
-export const createActionPlan = (payload: ActionPlanCreatePayload): Promise<ActionPlanDetail> =>
+export const createActionPlan = (payload: ActionPlanCreatePayload): Promise<ActionPlanDetail[]> =>
     apiClient
-        .post<ActionPlanDetail>('/action-plans', payload, { timeout: ACTION_PLAN_REQUEST_TIMEOUT })
+        .post<ActionPlanDetail[]>('/action-plans', payload, { timeout: ACTION_PLAN_REQUEST_TIMEOUT })
         .then((response) => response.data)
 
-export const listActionPlans = (): Promise<ActionPlan[]> =>
-    apiClient.get<ActionPlan[]>('/action-plans').then((response) => response.data)
+export const listActionPlans = (goalId?: number): Promise<ActionPlan[]> => {
+    const params = goalId != null ? { goal_id: goalId } : {}
+    return apiClient.get<ActionPlan[]>('/action-plans', { params }).then((response) => response.data)
+}
 
 export const getActionPlanDetail = (planId: number): Promise<ActionPlanDetail> =>
     apiClient.get<ActionPlanDetail>(`/action-plans/${planId}`).then((response) => response.data)
@@ -53,5 +56,16 @@ export const refreshActionPlan = (planId: number): Promise<ActionPlanDetail> =>
         .post<ActionPlanDetail>(`/action-plans/${planId}/refresh`, undefined, { timeout: ACTION_PLAN_REQUEST_TIMEOUT })
         .then((response) => response.data)
 
+export interface ActionPlanItemCompletionPayload {
+    completed: boolean
+}
+
 export const deleteActionPlan = (planId: number): Promise<void> =>
     apiClient.delete(`/action-plans/${planId}`).then(() => undefined)
+
+export const patchActionPlanItemCompletion = (
+    planId: number,
+    itemId: number,
+    payload: ActionPlanItemCompletionPayload,
+): Promise<ActionPlanItem> =>
+    apiClient.patch<ActionPlanItem>(`/action-plans/${planId}/items/${itemId}`, payload).then((r) => r.data)

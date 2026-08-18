@@ -72,7 +72,7 @@ async function loadProfile() {
         profile.value = data
         syncForm(data)
     } catch {
-        error.value = '无法加载你的扩展画像。'
+        error.value = '无法加载你的用户画像。'
     } finally {
         loading.value = false
     }
@@ -94,9 +94,9 @@ async function saveProfile() {
 
         profile.value = updated
         syncForm(updated)
-        feedback.value = '扩展画像更新成功。'
+        feedback.value = '用户画像更新成功。'
     } catch {
-        error.value = '无法更新扩展画像。'
+        error.value = '无法更新用户画像。'
     } finally {
         saving.value = false
     }
@@ -134,7 +134,7 @@ onMounted(async () => {
             <div class="title-row">
                 <div>
                     <p class="page-kicker">结构化画像</p>
-                    <h1 class="page-title">扩展画像</h1>
+                    <h1 class="page-title">用户画像</h1>
                     <p class="page-subtitle">
                         维护一个关于兴趣、技能、目标和偏好的结构化画像。你可以手动编辑，也可以触发 AI 从最近聊天中抽取信息。
                     </p>
@@ -310,12 +310,12 @@ onMounted(async () => {
 }
 
 .summary-list strong {
-    color: #d8e7f7;
+    color: var(--heading);
 }
 
 .summary-list span {
     text-align: right;
-    color: #f8fbff;
+    color: var(--text-muted);
 }
 
 .muted {

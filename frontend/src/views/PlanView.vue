@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { isAxiosError } from 'axios'
 import { ref, computed, onMounted } from 'vue'
-import { createGoal, listGoals, getGoalDetail, refreshGoalBreakdown, deleteGoal, type Goal, type GoalDetail } from '../api/goals'
-import { createActionPlan, getActionPlanDetail, listActionPlans, refreshActionPlan, deleteActionPlan, type ActionPlan, type ActionPlanDetail, type ActionPlanItem } from '../api/actionPlans'
-import BreakdownNode from '../components/BreakdownNode.vue'
+import { createGoal, listGoals, getGoalDetail, refreshGoalBreakdown, deleteGoal, rescheduleGoalPlans, type Goal, type GoalDetail } from '../api/goals'
+import { createActionPlan, getActionPlanDetail, listActionPlans, refreshActionPlan, deleteActionPlan, patchActionPlanItemCompletion, type ActionPlan, type ActionPlanDetail, type ActionPlanItem } from '../api/actionPlans'
+import BreakdownPathTree from '../components/BreakdownPathTree.vue'
+import { getApiErrorMessage } from '../utils/apiError'
 
 // State
 const goals = ref<Goal[]>([])
@@ -19,6 +21,14 @@ const isActionPlanPolling = ref(false)
 const pollingGoalId = ref<number | null>(null)
 const pollingActionPlanGoalId = ref<number | null>(null)
 const errorMessage = ref('')
+const itemBusyId = ref<number | null>(null)
+const selectedMainBreakdownId = ref<number | null>(null)
+const isRescheduling = ref(false)
+const showGoalPicker = ref(true)
+
+function clearError() {
+  errorMessage.value = ''
+}
 
 // Form state
 const formData = ref({
@@ -33,9 +43,9 @@ const loadGoals = async () => {
   try {
     isLoading.value = true
     goals.value = await listGoals()
-    errorMessage.value = ''
+    clearError()
   } catch (error) {
-    errorMessage.value = '加载目标失败'
+    errorMessage.value = getApiErrorMessage(error, '无法加载目标列表。')
     console.error(error)
   } finally {
     isLoading.value = false
@@ -46,7 +56,30 @@ const loadActionPlans = async () => {
   try {
     actionPlans.value = await listActionPlans()
   } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '无法加载行动计划列表。')
     console.error(error)
+  }
+}
+
+function mergeActionPlansForGoal(goalId: number, incoming: ActionPlan[]) {
+  const rest = actionPlans.value.filter((plan) => plan.goal_id !== goalId)
+  actionPlans.value = [...incoming, ...rest]
+}
+
+const loadActionPlansForGoal = async (goalId: number) => {
+  try {
+    const summaries = await listActionPlans(goalId)
+    mergeActionPlansForGoal(goalId, summaries)
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '无法加载该目标的行动计划列表。')
+    console.error(error)
+  }
+}
+
+async function refreshSelectedGoalFromServer(goalId: number) {
+  const detail = await getGoalDetail(goalId)
+  if (selectedGoal.value?.id === goalId) {
+    selectedGoal.value = detail
   }
 }
 
@@ -66,11 +99,13 @@ const pollGoalBreakdown = async (goalId: number) => {
         if (selectedGoal.value?.id === goalId || !selectedGoal.value) {
           selectedGoal.value = detail
         }
+        void pollActionPlansForGoal(goalId)
         return
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '获取目标拆解状态时出现问题。')
     console.error(error)
   } finally {
     isPollingBreakdown.value = false
@@ -78,31 +113,46 @@ const pollGoalBreakdown = async (goalId: number) => {
   }
 }
 
-const pollActionPlanForGoal = async (goalId: number) => {
+const pollActionPlansForGoal = async (goalId: number) => {
   if (isActionPlanPolling.value && pollingActionPlanGoalId.value === goalId) return
 
   isActionPlanPolling.value = true
   pollingActionPlanGoalId.value = goalId
 
-  const maxAttempts = 20
-  const delayMs = 1500
+  const maxAttempts = 40
+  const delayMs = 1200
 
   try {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      await loadActionPlans()
-      const summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
-      if (summary) {
-        const detail = await getActionPlanDetail(summary.id)
-        if (selectedGoal.value?.id === goalId || !selectedGoal.value) {
-          selectedActionPlan.value = detail
+      const summaries = await listActionPlans(goalId)
+      mergeActionPlansForGoal(goalId, summaries)
+
+      await refreshSelectedGoalFromServer(goalId)
+
+      const allSettled =
+        summaries.length > 0 &&
+        summaries.every((plan) => plan.status !== 'in_progress')
+
+      if (allSettled) {
+        if (selectedGoal.value?.id === goalId && selectedMainBreakdownId.value != null) {
+          const row = selectedGoal.value.main_action_plan_progress?.find(
+            (r) => r.main_breakdown_id === selectedMainBreakdownId.value,
+          )
+          if (row?.plan_id) {
+            try {
+              selectedActionPlan.value = await getActionPlanDetail(row.plan_id)
+            } catch {
+              selectedActionPlan.value = null
+            }
+          }
         }
-        if (detail.status !== 'in_progress') {
-          return
-        }
+        return
       }
+
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
   } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '获取行动计划状态时出现问题。')
     console.error(error)
   } finally {
     if (pollingActionPlanGoalId.value === goalId) {
@@ -113,28 +163,40 @@ const pollActionPlanForGoal = async (goalId: number) => {
 }
 
 // Load goal detail
-const selectGoal = async (goal: Goal) => {
+const selectGoal = async (goal: Goal, options?: { focusWorkspace?: boolean }) => {
+  const focusWorkspace = options?.focusWorkspace !== false
   try {
     isLoading.value = true
     const detail = await getGoalDetail(goal.id)
     selectedGoal.value = detail
+    selectedMainBreakdownId.value = null
+    selectedActionPlan.value = null
     if (!detail.breakdowns?.root_nodes?.length) {
       void pollGoalBreakdown(goal.id)
     }
-    await loadActionPlanForGoal(goal.id)
-    errorMessage.value = ''
+    await loadActionPlansForGoal(goal.id)
+    void pollActionPlansForGoal(goal.id)
+    clearError()
+    if (focusWorkspace) {
+      showGoalPicker.value = false
+    }
   } catch (error) {
-    errorMessage.value = 'Failed to load goal details'
+    errorMessage.value = getApiErrorMessage(error, '无法加载目标详情。')
     console.error(error)
   } finally {
     isLoading.value = false
   }
 }
 
+function returnToGoalPicker() {
+  showGoalPicker.value = true
+}
+
 const upsertActionPlanSummary = (detail: ActionPlanDetail) => {
   const summary: ActionPlan = {
     id: detail.id,
     goal_id: detail.goal_id,
+    main_breakdown_id: detail.main_breakdown_id,
     title: detail.title,
     summary: detail.summary,
     status: detail.status,
@@ -148,36 +210,29 @@ const upsertActionPlanSummary = (detail: ActionPlanDetail) => {
     return
   }
 
-  const goalIndex = actionPlans.value.findIndex((plan) => plan.goal_id === summary.goal_id)
-  if (goalIndex >= 0) {
-    actionPlans.value.splice(goalIndex, 1, summary)
-    return
-  }
-
   actionPlans.value.unshift(summary)
 }
 
-const loadActionPlanForGoal = async (goalId: number) => {
-  let summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
-  if (!summary) {
-    await loadActionPlans()
-    summary = actionPlans.value.find((plan) => plan.goal_id === goalId)
-  }
-  if (!summary) {
-    selectedActionPlan.value = null
-    return
-  }
+const onSelectMainBreakdown = async (mainId: number) => {
+  selectedMainBreakdownId.value = mainId
+  const gid = selectedGoal.value?.id
+  if (!gid) return
 
   try {
     isActionPlanFetching.value = true
-    selectedActionPlan.value = await getActionPlanDetail(summary.id)
-    errorMessage.value = ''
-    if (selectedActionPlan.value.status === 'in_progress') {
-      void pollActionPlanForGoal(goalId)
+    const row = selectedGoal.value?.main_action_plan_progress?.find((r) => r.main_breakdown_id === mainId)
+    if (row?.plan_id) {
+      selectedActionPlan.value = await getActionPlanDetail(row.plan_id)
+      if (selectedActionPlan.value?.status === 'in_progress') {
+        void pollActionPlansForGoal(gid)
+      }
+    } else {
+      selectedActionPlan.value = null
     }
+    clearError()
   } catch (error) {
     selectedActionPlan.value = null
-    errorMessage.value = 'Failed to load action plan details'
+    errorMessage.value = getApiErrorMessage(error, '无法加载行动计划详情。')
     console.error(error)
   } finally {
     isActionPlanFetching.value = false
@@ -189,20 +244,22 @@ const handleGenerateActionPlan = async () => {
 
   try {
     isActionPlanBusy.value = true
-    const detail = await createActionPlan({ goal_id: selectedGoal.value.id })
-    selectedActionPlan.value = detail
-    upsertActionPlanSummary(detail)
-    if (detail.status === 'in_progress') {
-      void pollActionPlanForGoal(selectedGoal.value.id)
+    const details = await createActionPlan({ goal_id: selectedGoal.value.id })
+    for (const detail of details) {
+      upsertActionPlanSummary(detail)
     }
-    errorMessage.value = ''
+    if (details.some((d) => d.status === 'in_progress')) {
+      void pollActionPlansForGoal(selectedGoal.value.id)
+    }
+    await refreshSelectedGoalFromServer(selectedGoal.value.id)
+    clearError()
   } catch (error) {
     if (isTimeoutError(error) && selectedGoal.value) {
-      errorMessage.value = ''
-      void pollActionPlanForGoal(selectedGoal.value.id)
+      clearError()
+      void pollActionPlansForGoal(selectedGoal.value.id)
       return
     }
-    errorMessage.value = 'Failed to generate action plan'
+    errorMessage.value = getApiErrorMessage(error, '无法生成行动计划。')
     console.error(error)
   } finally {
     isActionPlanBusy.value = false
@@ -218,16 +275,16 @@ const handleRefreshActionPlan = async () => {
     selectedActionPlan.value = detail
     upsertActionPlanSummary(detail)
     if (detail.status === 'in_progress') {
-      void pollActionPlanForGoal(selectedActionPlan.value.goal_id)
+      void pollActionPlansForGoal(selectedActionPlan.value.goal_id)
     }
-    errorMessage.value = ''
+    clearError()
   } catch (error) {
     if (isTimeoutError(error)) {
-      errorMessage.value = ''
-      void pollActionPlanForGoal(selectedActionPlan.value.goal_id)
+      clearError()
+      void pollActionPlansForGoal(selectedActionPlan.value.goal_id)
       return
     }
-    errorMessage.value = 'Failed to refresh action plan'
+    errorMessage.value = getApiErrorMessage(error, '无法刷新行动计划。')
     console.error(error)
   } finally {
     isActionPlanBusy.value = false
@@ -237,7 +294,7 @@ const handleRefreshActionPlan = async () => {
 // Create goal
 const handleCreateGoal = async () => {
   if (!formData.value.title.trim()) {
-    errorMessage.value = 'Goal title is required'
+    errorMessage.value = '请填写目标标题。'
     return
   }
 
@@ -254,9 +311,9 @@ const handleCreateGoal = async () => {
     await selectGoal(newGoal)
     showCreateForm.value = false
     formData.value = { title: '', description: '', priority: 'medium', target_date: '' }
-    errorMessage.value = ''
+    clearError()
   } catch (error) {
-    errorMessage.value = 'Failed to create goal'
+    errorMessage.value = getApiErrorMessage(error, '无法创建目标。')
     console.error(error)
   } finally {
     isLoading.value = false
@@ -270,11 +327,10 @@ const handleRefreshBreakdown = async () => {
   try {
     isRefreshing.value = true
     await refreshGoalBreakdown(selectedGoal.value.id)
-    // Reload goal detail
-    await selectGoal(selectedGoal.value)
-    errorMessage.value = ''
+    await selectGoal(selectedGoal.value, { focusWorkspace: false })
+    clearError()
   } catch (error) {
-    errorMessage.value = 'Failed to refresh breakdown'
+    errorMessage.value = getApiErrorMessage(error, '无法刷新目标拆解。')
     console.error(error)
   } finally {
     isRefreshing.value = false
@@ -292,10 +348,12 @@ const handleDeleteGoal = async (goalId: number) => {
     if (selectedGoal.value?.id === goalId) {
       selectedGoal.value = null
       selectedActionPlan.value = null
+      selectedMainBreakdownId.value = null
+      showGoalPicker.value = true
     }
-    errorMessage.value = ''
+    clearError()
   } catch (error) {
-    errorMessage.value = 'Failed to delete goal'
+    errorMessage.value = getApiErrorMessage(error, '无法删除目标。')
     console.error(error)
   }
 }
@@ -307,10 +365,56 @@ const handleDeleteActionPlan = async () => {
     await deleteActionPlan(selectedActionPlan.value.id)
     actionPlans.value = actionPlans.value.filter((plan) => plan.id !== selectedActionPlan.value?.id)
     selectedActionPlan.value = null
-    errorMessage.value = ''
+    selectedMainBreakdownId.value = null
+    clearError()
   } catch (error) {
-    errorMessage.value = 'Failed to delete action plan'
+    errorMessage.value = getApiErrorMessage(error, '无法删除行动计划。')
     console.error(error)
+  }
+}
+
+function isActionPlanItemCompleted(item: ActionPlanItem): boolean {
+  return item.status === 'completed'
+}
+
+async function toggleActionPlanItemCompletion(item: ActionPlanItem, completed: boolean) {
+  if (!selectedActionPlan.value) return
+
+  itemBusyId.value = item.id
+  clearError()
+  try {
+    const updated = await patchActionPlanItemCompletion(selectedActionPlan.value.id, item.id, { completed })
+    const nextItems = selectedActionPlan.value.items.map((i) => (i.id === item.id ? { ...i, ...updated } : i))
+    const nextDetail: ActionPlanDetail = { ...selectedActionPlan.value, items: nextItems }
+    selectedActionPlan.value = nextDetail
+    upsertActionPlanSummary(nextDetail)
+    if (selectedGoal.value) {
+      await refreshSelectedGoalFromServer(selectedGoal.value.id)
+    }
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '无法更新行动计划条目状态。')
+    console.error(error)
+  } finally {
+    itemBusyId.value = null
+  }
+}
+
+const handleRescheduleGoal = async () => {
+  if (!selectedGoal.value) return
+  if (!confirm('将根据当前日期重新拆解目标并生成各阶段行动计划，是否继续？')) return
+
+  try {
+    isRescheduling.value = true
+    await rescheduleGoalPlans(selectedGoal.value.id)
+    selectedMainBreakdownId.value = null
+    selectedActionPlan.value = null
+    await selectGoal(selectedGoal.value, { focusWorkspace: false })
+    clearError()
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '无法启动重新安排。')
+    console.error(error)
+  } finally {
+    isRescheduling.value = false
   }
 }
 
@@ -321,18 +425,23 @@ const formatDate = (dateStr: string | null) => {
 }
 
 const isTimeoutError = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') return false
-  const maybeError = error as { code?: string; message?: string }
-  if (maybeError.code === 'ECONNABORTED') return true
-  const message = maybeError.message?.toLowerCase() ?? ''
-  return message.includes('timeout')
+  if (isAxiosError(error)) {
+    return error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout') === true
+  }
+  return false
 }
 
 // Computed
 const hasGoals = computed(() => goals.value.length > 0)
 const breakdownNodes = computed(() => selectedGoal.value?.breakdowns.root_nodes || [])
+const progressByMainId = computed(() => {
+  const map: Record<number, { total: number; done: number }> = {}
+  for (const row of selectedGoal.value?.main_action_plan_progress ?? []) {
+    map[row.main_breakdown_id] = { total: row.total_items, done: row.completed_items }
+  }
+  return map
+})
 const actionPlanItems = computed<ActionPlanItem[]>(() => selectedActionPlan.value?.items || [])
-const hasActionPlan = computed(() => Boolean(selectedActionPlan.value))
 const isActionPlanLoading = computed(() => isActionPlanFetching.value || isActionPlanPolling.value)
 const actionPlanErrorMessage = computed(() => selectedActionPlan.value?.error_message?.trim() || '')
 const breakdownStatusMessage = computed(() => {
@@ -362,9 +471,9 @@ onMounted(() => {
 
 <template>
   <div class="page page--wide plan-page">
-    <!-- Error Alert -->
-    <div v-if="errorMessage" class="error-alert">
-      {{ errorMessage }}
+    <div v-if="errorMessage" class="error-banner" role="alert">
+      <p class="feedback feedback--error error-banner__text">{{ errorMessage }}</p>
+      <button type="button" class="btn btn--secondary error-banner__dismiss" @click="clearError">关闭</button>
     </div>
 
     <!-- Header -->
@@ -388,14 +497,12 @@ onMounted(() => {
       <form @submit.prevent="handleCreateGoal" class="form-grid">
         <div class="form-group">
           <label for="goal-title">目标标题 *</label>
-          <input id="goal-title" v-model="formData.title" type="text" placeholder="例如：学习前端开发"
-            required />
+          <input id="goal-title" v-model="formData.title" type="text" placeholder="例如：学习前端开发" required />
         </div>
 
         <div class="form-group">
           <label for="goal-description">描述</label>
-          <textarea id="goal-description" v-model="formData.description" placeholder="详细描述你的目标…"
-            rows="4" />
+          <textarea id="goal-description" v-model="formData.description" placeholder="详细描述你的目标…" rows="4" />
         </div>
 
         <div class="form-group form-group--half">
@@ -419,9 +526,9 @@ onMounted(() => {
     </section>
 
     <!-- Goals Layout -->
-    <div v-if="hasGoals" class="goals-container">
+    <div v-if="hasGoals" class="goals-container" :class="{ 'goals-container--picker': showGoalPicker }">
       <!-- Goals List -->
-      <section class="goals-list reveal">
+      <section v-show="showGoalPicker" class="goals-list reveal">
         <h2 class="section-title">你的目标</h2>
         <div class="goal-cards">
           <div v-for="goal in goals" :key="goal.id" class="goal-card"
@@ -445,113 +552,147 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- Goal Detail & Breakdown -->
-      <section v-if="selectedGoal" class="goal-detail reveal">
-        <div class="detail-header">
-          <h2>{{ selectedGoal.title }}</h2>
-          <div class="detail-actions">
-            <button class="btn btn--secondary btn--sm" @click="handleRefreshBreakdown" :disabled="isRefreshing">
-              {{ isRefreshing ? '刷新中…' : '🔄 刷新' }}
+      <section v-if="selectedGoal && !showGoalPicker" class="goal-detail reveal goal-detail--workspace-focus">
+        <div class="goal-workspace-card goal-workspace-card--focused">
+          <div class="goal-workspace-card__bar">
+            <button type="button" class="btn btn--secondary btn--sm goal-workspace-card__back"
+              @click="returnToGoalPicker">
+              ← 返回目标选择
             </button>
-            <button class="btn btn--danger btn--sm" @click="handleDeleteGoal(selectedGoal.id)">
-              🗑️ 删除
-            </button>
-          </div>
-        </div>
-
-        <p v-if="selectedGoal.description" class="detail-description">
-          {{ selectedGoal.description }}
-        </p>
-
-        <div class="detail-meta">
-          <span>状态：<strong>{{ selectedGoal.status }}</strong></span>
-          <span>优先级：<strong>{{ selectedGoal.priority }}</strong></span>
-          <span v-if="selectedGoal.target_date">
-            目标日期：<strong>{{ formatDate(selectedGoal.target_date) }}</strong>
-          </span>
-        </div>
-
-        <!-- Breakdown Tree -->
-        <div class="breakdown-section">
-          <h3 class="breakdown-title">目标拆解</h3>
-          <div v-if="breakdownNodes.length > 0" class="breakdown-tree">
-            <BreakdownNode v-for="node in breakdownNodes" :key="node.id" :node="node" />
-          </div>
-          <p v-else class="placeholder">
-            {{ breakdownStatusMessage }}
-          </p>
-        </div>
-
-        <!-- Action Plan -->
-        <div class="action-plan-section">
-          <div class="section-row">
-            <h3 class="breakdown-title">行动计划</h3>
-            <div class="detail-actions">
-              <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
-                @click="hasActionPlan ? handleRefreshActionPlan() : handleGenerateActionPlan()"
-                :disabled="isActionPlanBusy || isActionPlanLoading">
-                {{ isActionPlanBusy ? '处理中…' : hasActionPlan ? '🔄 刷新计划' : '✨ 生成计划' }}
+            <div class="goal-workspace-card__bar-actions">
+              <button type="button" class="btn btn--secondary btn--sm" @click="handleRescheduleGoal"
+                :disabled="isRescheduling || isRefreshing">
+                {{ isRescheduling ? '安排中…' : '📅 重新安排' }}
               </button>
-              <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
-                :disabled="isActionPlanBusy">
-                🗑️ 移除计划
+              <button type="button" class="btn btn--secondary btn--sm" @click="handleRefreshBreakdown"
+                :disabled="isRefreshing">
+                {{ isRefreshing ? '刷新中…' : '🔄 刷新拆解' }}
+              </button>
+              <button type="button" class="btn btn--danger btn--sm" @click="handleDeleteGoal(selectedGoal.id)">
+                🗑️ 删除目标
               </button>
             </div>
           </div>
-
-          <p v-if="actionPlanStatusMessage" class="status-hint">
-            {{ actionPlanStatusMessage }}
-          </p>
-
-          <div v-if="isActionPlanLoading" class="placeholder">
-            正在加载行动计划…
-          </div>
-          <div v-else-if="selectedActionPlan" class="action-plan-card">
-            <div class="action-plan-card__header">
-              <div>
-                <h4>{{ selectedActionPlan.title }}</h4>
-                <p v-if="selectedActionPlan.summary" class="action-plan-summary">
-                  {{ selectedActionPlan.summary }}
-                </p>
+          <div class="detail-split">
+            <div class="detail-card detail-card--breakdown">
+              <div class="detail-card__head">
+                <h3 class="detail-card__title">目标拆解</h3>
+                <p class="detail-card__lede">主路径节点默认展开；悬停带分支的节点可查看下级详情。</p>
               </div>
-              <span class="status-badge">{{ selectedActionPlan.status }}</span>
+              <div v-if="breakdownNodes.length > 0" class="breakdown-path-wrap">
+                <BreakdownPathTree
+                  :nodes="breakdownNodes"
+                  :progress-by-main-id="progressByMainId"
+                  :selected-main-id="selectedMainBreakdownId"
+                  @select-main="onSelectMainBreakdown"
+                />
+              </div>
+              <p v-else class="placeholder detail-card__placeholder">
+                {{ breakdownStatusMessage }}
+              </p>
             </div>
 
-            <p v-if="actionPlanErrorMessage" class="status-hint status-hint--error">
-              {{ actionPlanErrorMessage }}
-            </p>
+            <div class="detail-card detail-card--action-plan">
+              <div class="detail-card__head detail-card__head--row">
+                <div>
+                  <h3 class="detail-card__title">行动计划</h3>
+                  <p class="detail-card__lede">
+                    创建目标并拆解后，系统会为每个主节点自动生成一篇行动计划；点击左侧主节点查看对应清单。完成条目会写入成长记录并更新进度条。
+                  </p>
+                </div>
+                <div class="detail-actions">
+                  <button v-if="selectedGoal" class="btn btn--secondary btn--sm"
+                    @click="handleGenerateActionPlan()"
+                    :disabled="isActionPlanBusy || isActionPlanLoading || !breakdownNodes.length">
+                    {{ isActionPlanBusy ? '处理中…' : '↻ 重新生成全部' }}
+                  </button>
+                  <button v-if="selectedActionPlan" class="btn btn--secondary btn--sm"
+                    @click="handleRefreshActionPlan()"
+                    :disabled="isActionPlanBusy || isActionPlanLoading">
+                    {{ isActionPlanBusy ? '处理中…' : '🔄 刷新本篇' }}
+                  </button>
+                  <button v-if="selectedActionPlan" class="btn btn--danger btn--sm" @click="handleDeleteActionPlan"
+                    :disabled="isActionPlanBusy">
+                    🗑️ 移除计划
+                  </button>
+                </div>
+              </div>
 
-            <div v-if="actionPlanItems.length > 0" class="action-plan-list">
-              <article v-for="item in actionPlanItems" :key="item.id" class="action-plan-item">
-                <div class="action-plan-item__top">
+              <p v-if="actionPlanStatusMessage" class="status-hint">
+                {{ actionPlanStatusMessage }}
+              </p>
+
+              <div v-if="isActionPlanLoading" class="placeholder detail-card__placeholder">
+                正在加载行动计划…
+              </div>
+              <div v-else-if="!selectedMainBreakdownId" class="placeholder detail-card__placeholder">
+                点击左侧「目标拆解」中的主节点，查看该阶段的行动计划与执行项。
+              </div>
+              <div v-else>
+                <div v-if="selectedActionPlan" class="action-plan-inner">
+                <div class="action-plan-card__header">
                   <div>
-                    <h5>{{ item.title }}</h5>
-                    <p v-if="item.description" class="action-plan-item__desc">
-                      {{ item.description }}
+                    <h4>{{ selectedActionPlan.title }}</h4>
+                    <p v-if="selectedActionPlan.summary" class="action-plan-summary">
+                      {{ selectedActionPlan.summary }}
                     </p>
                   </div>
-                  <span class="badge badge--muted">{{ item.frequency }}</span>
+                  <span class="status-badge">{{ selectedActionPlan.status }}</span>
                 </div>
 
-                <div class="action-plan-item__meta">
-                  <span>Status: <strong>{{ item.status }}</strong></span>
-                  <span v-if="item.start_date">Start: <strong>{{ formatDate(item.start_date) }}</strong></span>
-                  <span v-if="item.due_date">Due: <strong>{{ formatDate(item.due_date) }}</strong></span>
-                  <span v-if="item.schedule">Schedule: <strong>{{ item.schedule }}</strong></span>
-                  <span v-if="item.breakdown_id">Breakdown ID: <strong>#{{ item.breakdown_id }}</strong></span>
+                <p v-if="actionPlanErrorMessage" class="status-hint status-hint--error">
+                  {{ actionPlanErrorMessage }}
+                </p>
+
+                <div v-if="actionPlanItems.length > 0" class="action-plan-list">
+                  <article v-for="item in actionPlanItems" :key="item.id" class="action-plan-item"
+                    :class="{ 'action-plan-item--done': isActionPlanItemCompleted(item) }">
+                    <div class="action-plan-item__top">
+                      <div class="action-plan-item__copy">
+                        <h5>{{ item.title }}</h5>
+                        <p v-if="item.description" class="action-plan-item__desc">
+                          {{ item.description }}
+                        </p>
+                      </div>
+                      <div class="action-plan-item__aside">
+                        <span class="badge badge--muted">{{ item.frequency }}</span>
+                        <div class="action-plan-item__actions">
+                          <button v-if="!isActionPlanItemCompleted(item)" type="button" class="btn btn--primary btn--sm"
+                            :disabled="isActionPlanBusy || itemBusyId === item.id"
+                            @click="toggleActionPlanItemCompletion(item, true)">
+                            {{ itemBusyId === item.id ? '…' : '完成' }}
+                          </button>
+                          <button v-else type="button" class="btn btn--secondary btn--sm"
+                            :disabled="isActionPlanBusy || itemBusyId === item.id"
+                            @click="toggleActionPlanItemCompletion(item, false)">
+                            {{ itemBusyId === item.id ? '…' : '未完成' }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="action-plan-item__meta">
+                      <span>状态：<strong>{{ item.status }}</strong></span>
+                      <span v-if="item.start_date">开始：<strong>{{ formatDate(item.start_date) }}</strong></span>
+                      <span v-if="item.due_date">截止：<strong>{{ formatDate(item.due_date) }}</strong></span>
+                      <span v-if="item.schedule">节奏：<strong>{{ item.schedule }}</strong></span>
+                      <span v-if="item.breakdown_id">拆解节点：<strong>#{{ item.breakdown_id }}</strong></span>
+                    </div>
+                  </article>
                 </div>
-              </article>
+
+                <p v-else class="placeholder action-plan-empty">
+                  {{ selectedActionPlan.status === 'failed'
+                    ? '行动计划生成失败，请刷新重试。'
+                    : '该计划有效，但 AI 没有返回条目，请刷新重新生成。' }}
+                </p>
+                </div>
+                <p v-else class="placeholder detail-card__placeholder">
+                  该主节点尚无行动计划记录，可尝试「重新生成全部」或等待后台生成完成。
+                </p>
+              </div>
             </div>
-
-            <p v-else class="placeholder action-plan-empty">
-              {{ selectedActionPlan.status === 'failed'
-                ? '行动计划生成失败，请刷新重试。'
-                : '该计划有效，但 AI 没有返回条目，请刷新重新生成。' }}
-            </p>
           </div>
-          <p v-else class="placeholder">
-            选择一个目标并生成行动计划后，这里会展示结构化的执行清单。
-          </p>
         </div>
       </section>
     </div>
@@ -579,13 +720,22 @@ onMounted(() => {
   padding: 2rem 1rem;
 }
 
-.error-alert {
-  background-color: #fee;
-  border-left: 4px solid #f44;
-  color: #d00;
-  padding: 1rem;
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  flex-wrap: wrap;
   margin-bottom: 1rem;
-  border-radius: 4px;
+}
+
+.error-banner__text {
+  flex: 1;
+  margin: 0;
+  min-width: 12rem;
+}
+
+.error-banner__dismiss {
+  flex-shrink: 0;
 }
 
 .status-hint {
@@ -752,12 +902,60 @@ onMounted(() => {
 
 .goals-container {
   display: grid;
-  gap: 2rem;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.goals-container--picker .goals-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.goal-detail--workspace-focus {
+  max-height: min(82vh, 920px);
+}
+
+.goal-workspace-card__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.goal-workspace-card__bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.goal-workspace-card__back {
+  flex-shrink: 0;
+}
+
+.goal-workspace-card--focused {
+  padding: 0.85rem 1rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.goal-workspace-card--focused .detail-split {
+  margin-top: 0.85rem;
 }
 
 .goals-list {
   display: flex;
   flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  max-height: min(72vh, 720px);
+  overflow-y: auto;
+  padding-right: 0.35rem;
 }
 
 .goal-cards {
@@ -851,20 +1049,9 @@ onMounted(() => {
   background: var(--surface-2);
   border-radius: 8px;
   border: 1px solid var(--border);
-}
-
-.detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.detail-header h2 {
-  margin: 0;
-  color: var(--heading);
-  font-size: 1.4rem;
+  min-height: 0;
+  max-height: min(78vh, 880px);
+  overflow-y: auto;
 }
 
 .detail-actions {
@@ -872,61 +1059,98 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
-.detail-description {
-  color: var(--secondary-text);
-  margin-bottom: 1rem;
-  line-height: 1.5;
+.detail-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 1.25rem;
 }
 
-.detail-meta {
-  display: flex;
-  gap: 2rem;
-  flex-wrap: wrap;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
-  font-size: 0.95rem;
+.detail-card {
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  min-height: 0;
 }
 
-.detail-meta span {
-  color: var(--secondary-text);
+.detail-card__head {
+  margin-bottom: 0.75rem;
 }
 
-.detail-meta strong {
-  color: var(--heading);
-}
-
-.breakdown-section {
-  margin-top: 1.5rem;
-}
-
-.action-plan-section {
-  margin-top: 1.75rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
-}
-
-.section-row {
+.detail-card__head--row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
-  margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
-.breakdown-title {
-  font-size: 1.1rem;
+.detail-card__title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
   color: var(--heading);
-  margin: 0 0 1rem 0;
 }
 
-.action-plan-card {
+.detail-card__lede {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--secondary-text);
+  line-height: 1.45;
+  max-width: 42ch;
+}
+
+.detail-card__placeholder {
+  margin-top: 0.5rem;
+}
+
+.breakdown-path-wrap {
+  max-height: min(52vh, 560px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.action-plan-inner {
   display: grid;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-1);
+  gap: 0.85rem;
+  margin-top: 0.35rem;
+}
+
+.action-plan-item__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-plan-item__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.action-plan-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.action-plan-item--done {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(240, 253, 244, 0.55);
+}
+
+@media (max-width: 960px) {
+  .detail-split {
+    grid-template-columns: 1fr;
+  }
+
+  .breakdown-path-wrap {
+    max-height: none;
+  }
 }
 
 .action-plan-card__header {
@@ -997,53 +1221,6 @@ onMounted(() => {
   padding-top: 1rem;
 }
 
-.breakdown-tree {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.breakdown-node {
-  padding: 0.75rem 0;
-  border-left: 3px solid var(--accent-1);
-  padding-left: 1rem;
-}
-
-.node-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.node-status {
-  font-size: 0.6rem;
-  color: var(--accent-1);
-}
-
-.node-status.status-in_progress {
-  color: #ff9800;
-}
-
-.node-status.status-completed {
-  color: #4caf50;
-}
-
-.node-title {
-  font-weight: 500;
-  color: var(--heading);
-}
-
-.node-description {
-  margin: 0.25rem 0 0 0;
-  color: var(--secondary-text);
-  font-size: 0.95rem;
-}
-
-.node-children {
-  margin-top: 0.5rem;
-}
-
 .placeholder {
   color: var(--secondary-text);
   font-style: italic;
@@ -1082,17 +1259,19 @@ onMounted(() => {
   }
 }
 
+@media (max-width: 900px) {
+  .goals-list {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .goal-detail {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 @media (max-width: 768px) {
-  .detail-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .section-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .detail-actions {
     width: 100%;
     flex-direction: column;
@@ -1100,10 +1279,6 @@ onMounted(() => {
 
   .btn--sm {
     width: 100%;
-  }
-
-  .detail-meta {
-    gap: 1rem;
   }
 
   .goal-cards {

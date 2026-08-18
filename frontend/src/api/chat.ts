@@ -36,7 +36,9 @@ export interface SendMessageResponse {
 }
 
 export const sendMessage = (payload: SendMessagePayload): Promise<SendMessageResponse> =>
-  apiClient.post<SendMessageResponse>('/chat', payload).then((response) => response.data)
+  apiClient
+    .post<SendMessageResponse>('/chat', payload, { timeout: 120_000 })
+    .then((response) => response.data)
 
 export const listSessions = (): Promise<ChatSessionRead[]> => apiClient.get<ChatSessionRead[]>('/chat/sessions').then((response) => response.data)
 

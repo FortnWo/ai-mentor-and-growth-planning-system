@@ -2,7 +2,6 @@
 -- Stage 3: Unified Data Model + Event-Driven Persistence
 CREATE DATABASE IF NOT EXISTS ai_mentor_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE ai_mentor_test;
-
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_users_email (email)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -31,7 +29,6 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     CONSTRAINT fk_chat_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     INDEX idx_chat_sessions_user (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS chat_messages (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     session_id INT UNSIGNED NOT NULL,
@@ -41,7 +38,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     CONSTRAINT fk_chat_messages_session FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
     INDEX idx_chat_messages_session (session_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS user_profile (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL UNIQUE,
@@ -57,7 +53,6 @@ CREATE TABLE IF NOT EXISTS user_profile (
     CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     INDEX idx_user_profile_user (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS user_traits (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -76,7 +71,6 @@ CREATE TABLE IF NOT EXISTS user_traits (
     INDEX idx_user_traits_type (trait_type),
     INDEX idx_user_traits_key (trait_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS user_goals (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -91,7 +85,6 @@ CREATE TABLE IF NOT EXISTS user_goals (
     INDEX idx_user_goals_user (user_id),
     INDEX idx_user_goals_status (status)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS goal_breakdowns (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     goal_id INT UNSIGNED NOT NULL,
@@ -100,31 +93,38 @@ CREATE TABLE IF NOT EXISTS goal_breakdowns (
     description TEXT NULL,
     level TINYINT UNSIGNED NOT NULL DEFAULT 0,
     sequence SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-    status ENUM('pending', 'in_progress', 'completed') NOT NULL DEFAULT 'pending',
+    status ENUM('pending', 'in_progress', 'completed', 'failed') NOT NULL DEFAULT 'pending',
     due_date DATE NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_goal_breakdowns_goal FOREIGN KEY (goal_id) REFERENCES user_goals (id) ON DELETE CASCADE,
-    CONSTRAINT fk_goal_breakdowns_parent FOREIGN KEY (parent_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
-    INDEX idx_goal_breakdowns_goal (goal_id),
-    INDEX idx_goal_breakdowns_parent (parent_id),
-    INDEX idx_goal_breakdowns_level (level)
+    CONSTRAINT fk_breakdowns_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
+    CONSTRAINT fk_breakdowns_parent FOREIGN KEY (parent_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
+    INDEX idx_breakdowns_goal (goal_id),
+    INDEX idx_breakdowns_parent (parent_id),
+    INDEX idx_breakdowns_level (level)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS goal_actions (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    goal_id INT UNSIGNED NOT NULL UNIQUE,
+    goal_id INT UNSIGNED NOT NULL,
+    main_breakdown_id INT UNSIGNED NOT NULL,
     title VARCHAR(255) NOT NULL,
     summary TEXT NULL,
-    status ENUM('pending', 'in_progress', 'completed', 'archived', 'failed') NOT NULL DEFAULT 'pending',
+    status ENUM(
+        'pending',
+        'in_progress',
+        'completed',
+        'archived',
+        'failed'
+    ) NOT NULL DEFAULT 'pending',
     error_message TEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_goal_actions_goal FOREIGN KEY (goal_id) REFERENCES user_goals (id) ON DELETE CASCADE,
-    INDEX idx_goal_actions_goal (goal_id),
-    INDEX idx_goal_actions_status (status)
+    CONSTRAINT fk_action_plans_goal FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE,
+    CONSTRAINT fk_action_plans_main_breakdown FOREIGN KEY (main_breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_action_plan_goal_main_breakdown (goal_id, main_breakdown_id),
+    INDEX idx_action_plans_goal (goal_id),
+    INDEX idx_action_plans_main_breakdown (main_breakdown_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS goal_action_items (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     plan_id INT UNSIGNED NOT NULL,
@@ -133,20 +133,26 @@ CREATE TABLE IF NOT EXISTS goal_action_items (
     description TEXT NULL,
     frequency ENUM('once', 'daily', 'weekly', 'monthly', 'custom') NOT NULL DEFAULT 'custom',
     schedule TEXT NULL,
-    status ENUM('pending', 'in_progress', 'completed', 'archived', 'failed') NOT NULL DEFAULT 'pending',
+    status ENUM(
+        'pending',
+        'in_progress',
+        'completed',
+        'archived',
+        'failed'
+    ) NOT NULL DEFAULT 'pending',
     start_date DATE NULL,
     due_date DATE NULL,
     sequence SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_goal_action_items_plan FOREIGN KEY (plan_id) REFERENCES goal_actions (id) ON DELETE CASCADE,
-    CONSTRAINT fk_goal_action_items_breakdown FOREIGN KEY (breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE SET NULL,
-    INDEX idx_goal_action_items_plan (plan_id),
-    INDEX idx_goal_action_items_breakdown (breakdown_id),
-    INDEX idx_goal_action_items_status (status),
-    INDEX idx_goal_action_items_sequence (sequence)
+    CONSTRAINT fk_goal_action_items_breakdown FOREIGN KEY (breakdown_id) REFERENCES goal_breakdowns (id) ON DELETE
+    SET NULL,
+        INDEX idx_goal_action_items_plan (plan_id),
+        INDEX idx_goal_action_items_breakdown (breakdown_id),
+        INDEX idx_goal_action_items_status (status),
+        INDEX idx_goal_action_items_sequence (sequence)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS growth_records (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -172,7 +178,6 @@ CREATE TABLE IF NOT EXISTS growth_records (
     INDEX idx_growth_records_record_date (record_date),
     INDEX idx_growth_records_idempotency_key (idempotency_key)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS growth_daily_aggregates (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -187,7 +192,6 @@ CREATE TABLE IF NOT EXISTS growth_daily_aggregates (
     INDEX idx_growth_daily_aggregates_user (user_id),
     INDEX idx_growth_daily_aggregates_record_date (record_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS growth_summaries (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NOT NULL,
@@ -199,7 +203,6 @@ CREATE TABLE IF NOT EXISTS growth_summaries (
     INDEX idx_growth_summaries_user (user_id),
     INDEX idx_growth_summaries_date_range (start_date, end_date)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-
 CREATE TABLE IF NOT EXISTS domain_events (
     event_id CHAR(36) PRIMARY KEY,
     trace_id CHAR(36) NOT NULL,
@@ -213,4 +216,3 @@ CREATE TABLE IF NOT EXISTS domain_events (
     INDEX idx_domain_events_user_id (user_id),
     INDEX idx_domain_events_occurred_at (occurred_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
-

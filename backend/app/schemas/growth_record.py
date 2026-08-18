@@ -58,3 +58,15 @@ class GrowthRecordStats(BaseModel):
     last_activity_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GrowthDailyTrendPoint(BaseModel):
+    """One calendar day of rolled-up growth metrics for charts."""
+
+    record_date: str
+    completed_count: int = 0
+    reflection_count: int = 0
+    milestone_count: int = 0
+    growth_score: int = 0
+
+    model_config = ConfigDict(from_attributes=True)

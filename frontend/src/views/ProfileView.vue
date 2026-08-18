@@ -273,12 +273,12 @@ onMounted(async () => {
 }
 
 .summary-list strong {
-  color: #d8e7f7;
+  color: var(--heading);
 }
 
 .summary-list span {
   text-align: right;
-  color: #f8fbff;
+  color: var(--text-muted);
 }
 
 .form-card {

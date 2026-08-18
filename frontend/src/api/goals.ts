@@ -13,6 +13,14 @@ export interface GoalBreakdownNode {
     updated_at: string
 }
 
+export interface MainActionPlanProgress {
+  main_breakdown_id: number
+  plan_id: number | null
+  plan_status: string | null
+  total_items: number
+  completed_items: number
+}
+
 export interface GoalBreakdownTree {
     goal_id: number
     title: string
@@ -33,7 +41,8 @@ export interface Goal {
 }
 
 export interface GoalDetail extends Goal {
-    breakdowns: GoalBreakdownTree
+  breakdowns: GoalBreakdownTree
+  main_action_plan_progress?: MainActionPlanProgress[]
 }
 
 export interface GoalCreatePayload {
@@ -67,6 +76,9 @@ export const updateGoal = (goalId: number, payload: GoalUpdatePayload): Promise<
 
 export const refreshGoalBreakdown = (goalId: number): Promise<{ message: string }> =>
     apiClient.post<{ message: string }>(`/goals/${goalId}/refresh-breakdown`).then((response) => response.data)
+
+export const rescheduleGoalPlans = (goalId: number): Promise<{ message: string }> =>
+    apiClient.post<{ message: string }>(`/goals/${goalId}/reschedule`).then((response) => response.data)
 
 export const deleteGoal = (goalId: number): Promise<void> =>
     apiClient.delete(`/goals/${goalId}`).then(() => undefined)

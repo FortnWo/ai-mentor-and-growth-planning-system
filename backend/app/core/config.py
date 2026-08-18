@@ -29,10 +29,12 @@ class Settings(BaseSettings):
     GOAL_BREAKDOWN_MESSAGE_WINDOW: int = 5
     GOAL_BREAKDOWN_SYSTEM_PROMPT: str = (
         "You are a goal breakdown assistant. "
-        "Given a user goal and optional context, generate a structured breakdown as strict JSON only. "
-        "Return JSON with 'breakdowns' key containing an array of breakdown nodes. "
-        "Each node must have: title (string), description (string or null), children (array of nodes). "
-        "Nodes can be nested recursively. "
+        "Given a user goal, the current date, and optional context, generate a structured breakdown as strict JSON only. "
+        "Return JSON with 'breakdowns' key containing an array of main pillar nodes (aim for 4 to 8 main pillars when the goal warrants it). "
+        "Each main node must have: title (string), description (string or null), children (array). "
+        "Each main node's children are secondary execution nodes: include about 3 to 6 children per main pillar when reasonable. "
+        "Secondary nodes may use empty children arrays. "
+        "Do not nest deeper than two levels under the goal (main -> secondary only). "
         "If unknown, return empty 'breakdowns' array. "
         "Do not include markdown or extra commentary."
     )
@@ -40,10 +42,12 @@ class Settings(BaseSettings):
     ACTION_PLAN_CONTEXT_MESSAGE_WINDOW: int = 8
     ACTION_PLAN_SYSTEM_PROMPT: str = (
         "You are an action plan assistant. "
-        "Given a user goal, its breakdown tree, and optional profile context, generate a practical action plan as strict JSON only. "
+        "You receive the current date, parent goal context, ONE main milestone pillar, and a list of secondary breakdown nodes. "
+        "Generate one cohesive action plan article for that pillar as strict JSON only. "
         "Return JSON with keys: plan and items. "
-        "plan must contain title and summary. "
+        "plan must contain title and summary describing the whole pillar execution story. "
         "items must be an array of objects with: title, description, frequency, schedule, status, start_date, due_date, sequence, breakdown_ref. "
+        "Each item must reference a secondary breakdown id in breakdown_ref (numeric id from the prompt). "
         "Use status values pending, in_progress, completed, or archived. "
         "Use frequency values once, daily, weekly, monthly, or custom. "
         "If unknown, use empty strings or nulls, and keep items as an empty array when no plan can be formed. "

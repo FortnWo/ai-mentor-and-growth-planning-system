@@ -111,10 +111,10 @@ onBeforeUnmount(() => {
   gap: 0.25rem;
   min-width: 9.5rem;
   padding: 0.45rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.95);
-  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.4);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(20px);
 }
 
@@ -125,23 +125,23 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 12px;
   text-align: left;
-  color: #d8e7f7;
+  color: var(--heading);
   background: transparent;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
 .compact-action-menu__item:hover:not(:disabled) {
-  background: rgba(6, 182, 212, 0.08);
-  color: #f8fbff;
+  background: rgba(241, 245, 249, 0.95);
+  color: var(--heading);
 }
 
 .compact-action-menu__item--danger {
-  color: #fecaca;
+  color: #b91c1c;
 }
 
 .compact-action-menu__item--danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.12);
-  color: #fff1f2;
+  background: rgba(254, 226, 226, 0.95);
+  color: #991b1b;
 }
 
 .compact-action-menu__item:disabled {

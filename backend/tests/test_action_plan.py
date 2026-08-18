@@ -63,12 +63,8 @@ def _mock_goal_breakdown_response(title_prefix: str = "Phase"):
                     "description": "Setup the plan",
                     "children": [
                         {"title": f"{title_prefix} 1.1", "description": "First substep", "children": []},
+                        {"title": f"{title_prefix} 1.2", "description": "Second substep", "children": []},
                     ],
-                },
-                {
-                    "title": f"{title_prefix} 2",
-                    "description": "Execute the plan",
-                    "children": [],
                 },
             ]
         }
@@ -76,6 +72,11 @@ def _mock_goal_breakdown_response(title_prefix: str = "Phase"):
 
 
 def _create_goal_with_breakdowns(client, monkeypatch, student_headers, goal_title: str = "Launch Project"):
+    monkeypatch.setattr(
+        chat_service,
+        "build_action_plan_response",
+        lambda msg: json.dumps({"plan": {"title": "Auto", "summary": "x"}, "items": []}),
+    )
     monkeypatch.setattr(chat_service, "build_goal_breakdown_response", lambda message: _mock_goal_breakdown_response())
 
     create_response = client.post(
@@ -124,10 +125,8 @@ def test_create_action_plan_persists_items(client, monkeypatch):
     headers = {"Authorization": f"Bearer {token}"}
 
     goal_id, goal_detail = _create_goal_with_breakdowns(client, monkeypatch, headers)
-    root_nodes = goal_detail["breakdowns"]["root_nodes"]
-
-    first_breakdown_id = root_nodes[0]["id"]
-    second_breakdown_id = root_nodes[1]["id"]
+    root = goal_detail["breakdowns"]["root_nodes"][0]
+    child_ids = [root["children"][0]["id"], root["children"][1]["id"]]
 
     monkeypatch.setattr(
         chat_service,
@@ -148,18 +147,18 @@ def test_create_action_plan_persists_items(client, monkeypatch):
                         "start_date": "2026-05-01",
                         "due_date": "2026-05-07",
                         "sequence": 1,
-                        "breakdown_ref": first_breakdown_id,
+                        "breakdown_ref": child_ids[0],
                     },
                     {
                         "title": "Ship the second milestone",
                         "description": "Turn the next breakdown into action",
                         "frequency": "once",
                         "schedule": "One-time execution",
-                        "status": "in_progress",
+                        "status": "pending",
                         "start_date": "2026-05-08",
                         "due_date": "2026-05-15",
                         "sequence": 2,
-                        "breakdown_ref": second_breakdown_id,
+                        "breakdown_ref": child_ids[1],
                     },
                 ],
             }
@@ -169,14 +168,17 @@ def test_create_action_plan_persists_items(client, monkeypatch):
     response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
     assert response.status_code == 202
 
-    plan_id = response.json()["id"]
+    created = response.json()
+    assert isinstance(created, list)
+    assert len(created) == 1
+    plan_id = created[0]["id"]
     detail = _poll_action_plan_detail(client, headers, plan_id)
     assert detail is not None
     assert detail["goal_id"] == goal_id
     assert detail["title"] == "Launch Execution Plan"
     assert len(detail["items"]) == 2
-    assert detail["items"][0]["breakdown_id"] == first_breakdown_id
-    assert detail["items"][1]["breakdown_id"] == second_breakdown_id
+    assert detail["items"][0]["breakdown_id"] == child_ids[0]
+    assert detail["items"][1]["breakdown_id"] == child_ids[1]
 
     list_response = client.get("/action-plans", headers=headers)
     assert list_response.status_code == 200
@@ -189,7 +191,7 @@ def test_get_action_plan_detail_includes_items(client, monkeypatch):
     headers = {"Authorization": f"Bearer {token}"}
 
     goal_id, goal_detail = _create_goal_with_breakdowns(client, monkeypatch, headers, goal_title="Study Sprint")
-    breakdown_id = goal_detail["breakdowns"]["root_nodes"][0]["id"]
+    breakdown_id = goal_detail["breakdowns"]["root_nodes"][0]["children"][0]["id"]
 
     monkeypatch.setattr(
         chat_service,
@@ -216,7 +218,7 @@ def test_get_action_plan_detail_includes_items(client, monkeypatch):
 
     create_response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
     assert create_response.status_code == 202
-    plan_id = create_response.json()["id"]
+    plan_id = create_response.json()[0]["id"]
 
     detail = _poll_action_plan_detail(client, headers, plan_id)
     assert detail is not None
@@ -264,7 +266,7 @@ def test_refresh_action_plan_overwrites_items(client, monkeypatch):
                         "description": "Replacement plan item",
                         "frequency": "daily",
                         "schedule": "Every weekday",
-                        "status": "in_progress",
+                        "status": "pending",
                         "start_date": "2026-05-08",
                         "due_date": "2026-05-14",
                         "sequence": 1,
@@ -287,7 +289,7 @@ def test_refresh_action_plan_overwrites_items(client, monkeypatch):
 
     create_response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
     assert create_response.status_code == 202
-    plan_id = create_response.json()["id"]
+    plan_id = create_response.json()[0]["id"]
 
     created_detail = _poll_action_plan_detail(client, headers, plan_id)
     assert created_detail is not None
@@ -313,7 +315,7 @@ def test_invalid_action_plan_json_returns_conflict(client, monkeypatch):
     response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
     assert response.status_code == 202
 
-    plan_id = response.json()["id"]
+    plan_id = response.json()[0]["id"]
     detail = _poll_action_plan_detail(client, headers, plan_id, attempts=5)
     assert detail is not None
     assert detail.get("status") == "failed"
@@ -327,3 +329,63 @@ def test_get_missing_action_plan_returns_not_found(client, monkeypatch):
 
     response = client.get("/action-plans/99999", headers=headers)
     assert response.status_code == 404
+
+
+def test_patch_action_plan_item_completion_syncs_growth_record(client, monkeypatch):
+    student = create_student_user(client, 10)
+    token = login_student(client, student["username"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    goal_id, goal_detail = _create_goal_with_breakdowns(client, monkeypatch, headers, goal_title="Patch Item Goal")
+    breakdown_id = goal_detail["breakdowns"]["root_nodes"][0]["children"][0]["id"]
+
+    monkeypatch.setattr(
+        chat_service,
+        "build_action_plan_response",
+        lambda message: json.dumps(
+            {
+                "plan": {"title": "Patchable Plan", "summary": "For completion patch."},
+                "items": [
+                    {
+                        "title": "Do the thing",
+                        "description": "One actionable step",
+                        "frequency": "once",
+                        "schedule": "Today",
+                        "status": "pending",
+                        "start_date": "2026-05-01",
+                        "due_date": "2026-05-10",
+                        "sequence": 1,
+                        "breakdown_ref": breakdown_id,
+                    }
+                ],
+            }
+        ),
+    )
+
+    create_response = client.post("/action-plans", json={"goal_id": goal_id}, headers=headers)
+    assert create_response.status_code == 202
+    plan_id = create_response.json()[0]["id"]
+    detail = _poll_action_plan_detail(client, headers, plan_id)
+    assert detail is not None
+    item_id = detail["items"][0]["id"]
+
+    patch_resp = client.patch(
+        f"/action-plans/{plan_id}/items/{item_id}",
+        json={"completed": True},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["status"] == "completed"
+
+    growth_resp = client.get("/growth-records", headers=headers)
+    assert growth_resp.status_code == 200
+    titles = [row["title"] for row in growth_resp.json()]
+    assert any("完成行动" in t for t in titles)
+
+    undo = client.patch(
+        f"/action-plans/{plan_id}/items/{item_id}",
+        json={"completed": False},
+        headers=headers,
+    )
+    assert undo.status_code == 200
+    assert undo.json()["status"] == "pending"
