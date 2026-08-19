@@ -1,0 +1,18 @@
+# Frontend dependency manifest (reference)
+#
+# This file mirrors the frontend npm dependencies so new contributors can
+# quickly see what must be installed. The actual install source remains
+# frontend/package.json and the command is still `npm install`.
+
+axios==1.13.6
+echarts==6.0.0
+vue==3.5.30
+vue-router==4.6.4
+
+# Development dependencies
+@types/node==24.12.0
+@vitejs/plugin-vue==6.0.5
+@vue/tsconfig==0.9.0
+typescript==5.9.3
+vite==8.0.1
+vue-tsc==3.2.5
